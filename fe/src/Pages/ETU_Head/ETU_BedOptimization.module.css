@@ -1,0 +1,213 @@
+.container {
+  max-width: 1200px;
+  margin: 24px auto;
+  padding: 20px;
+  font-family: 'Inter', sans-serif;
+  color: #0f172a;
+}
+
+/* Header */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.title {
+  font-size: 28px;
+  font-weight: 700;
+  margin: 0;
+  color: #0f172a;
+}
+
+.subtitle {
+  color: #64748b;
+  margin: 4px 0 0 0;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+}
+
+.statusBadge {
+  background: #ecfdf5;
+  color: #047857;
+  padding: 6px 12px;
+  border-radius: 99px;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #a7f3d0;
+}
+
+.statusDot {
+  width: 8px;
+  height: 8px;
+  background: #10b981;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px #d1fae5;
+}
+
+/* Grid Layout */
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr; /* Right side slightly wider */
+  gap: 24px;
+}
+
+@media (max-width: 900px) {
+  .grid { grid-template-columns: 1fr; }
+}
+
+/* Cards */
+.forecastCard, .actionCard {
+  background: white;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  padding: 24px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+}
+
+.cardHeader {
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.cardTitle {
+  font-size: 16px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+}
+
+/* Left Panel Styles */
+.bigNumberContainer {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.label { font-size: 14px; color: #64748b; font-weight: 500; }
+.bigNumber { font-size: 64px; font-weight: 800; color: #2563eb; line-height: 1.1; }
+.subLabel { font-size: 13px; color: #94a3b8; }
+
+.driverBox {
+  background: #eff6ff;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 20px;
+  border: 1px solid #dbeafe;
+}
+
+.driverTitle { font-size: 12px; color: #1e40af; text-transform: uppercase; margin: 0 0 8px 0; }
+.driverContent { display: flex; align-items: center; gap: 10px; font-weight: 700; color: #1e3a8a; font-size: 16px; margin-bottom: 8px; }
+.driverIcon { color: #2563eb; }
+.driverDesc { font-size: 13px; color: #3b82f6; margin: 0; line-height: 1.5; }
+
+.confidenceBox {
+  margin-top: auto;
+  text-align: center;
+  font-size: 13px;
+  color: #64748b;
+  padding-top: 16px;
+  border-top: 1px solid #f1f5f9;
+}
+
+/* Right Panel Styles (Action Plan) */
+.planList { display: flex; flex-direction: column; gap: 20px; flex-grow: 1; }
+
+.planItem {
+  display: flex;
+  gap: 16px;
+  padding-bottom: 20px;
+  border-bottom: 1px dashed #e2e8f0;
+}
+
+.planItem:last-child { border-bottom: none; }
+
+.planIconGreen, .planIconBlue {
+  width: 40px; height: 40px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.planIconGreen { background: #f0fdf4; color: #16a34a; }
+.planIconBlue { background: #eff6ff; color: #2563eb; }
+
+.planDetails h4 { margin: 0 0 4px 0; font-size: 16px; font-weight: 700; color: #0f172a; }
+.planDetails p { margin: 0; font-size: 13px; color: #64748b; }
+
+.transferList {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0 0;
+  width: 100%;
+}
+
+.transferList li {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  padding: 6px 0;
+  color: #334155;
+  border-bottom: 1px solid #f8fafc;
+}
+
+.planCountGreen, .planCountBlue {
+  font-size: 24px; font-weight: 700; margin-left: auto;
+}
+.planCountGreen { color: #16a34a; }
+.planCountBlue { color: #2563eb; }
+
+/* Surge Box (Red Alert) */
+.surgeBox {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.surgeHeader {
+  display: flex; align-items: center; gap: 10px; color: #dc2626; margin-bottom: 8px;
+}
+.surgeHeader h4 { margin: 0; font-weight: 700; font-size: 15px; }
+
+.surgeContent {
+  display: flex; justify-content: space-between; align-items: center;
+}
+.surgeContent p { margin: 0; color: #991b1b; font-size: 14px; }
+.surgeCount { font-size: 28px; font-weight: 800; color: #dc2626; }
+
+/* Footer Button */
+.actionFooter { margin-top: 24px; }
+
+.btnApprove {
+  width: 100%;
+  background: #0f172a;
+  color: white;
+  border: none;
+  padding: 14px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btnApprove:hover { background: #1e293b; }
+
+.btnApproved {
+  width: 100%;
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+  padding: 14px;
+  border-radius: 8px;
+  font-weight: 600;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
