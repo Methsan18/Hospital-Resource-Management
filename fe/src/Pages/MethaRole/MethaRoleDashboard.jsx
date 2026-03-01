@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { AlertCircle, ChevronDown, Activity, HeartPulse, Thermometer } from 'lucide-react';
-
+import useFetch from "../../hooks/fetch.hook";
 /* ----------------------------------------------------------
    THEME
 -----------------------------------------------------------*/
@@ -183,6 +183,16 @@ const AlertCard = ({ count }) => (
 
 /* ----------------- LineChart (axes + dynamic xLabels) ----------------- */
 const LineChart = ({ data, xLabels, width = 540, height = 280, color = theme.line, yLabel = 'Cases', xAxisTitle = 'Month' }) => {
+  
+  // ✅ ADD THIS (prevents blank chart when only 0/1 points)
+  if (!data || !xLabels || data.length < 2 || xLabels.length < 2) {
+    return (
+      <div style={{ padding: 20, color: theme.muted, fontWeight: 600 }}>
+        Not enough data to plot
+      </div>
+    );
+  }
+  
   const paddingLeft = 56;
   const paddingBottom = 50;
   const paddingTop = 20;
@@ -294,14 +304,30 @@ const SingleCategoryTrend = ({ sLabel, rowLabels, values }) => {
 };
 
 /* ----------------- Modern S Chips ----------------- */
-const SChips = ({ activeDisease }) => {
+const SChips = ({ categories = [], activeDisease }) => {
   const palette = ['#1d4ed8','#0ea5e9','#10b981','#f59e0b','#ef4444','#a855f7','#22c55e','#2563eb'];
+
   return (
     <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 10 }}>
-      {CATEGORIES.map((cat, idx) => {
+      {categories.map((cat, idx) => {
         const active = !activeDisease || activeDisease === cat;
         return (
-          <div key={cat} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 999, border: `1px solid ${active ? theme.cardBorder : '#e5e7eb'}`, background: active ? '#f8fafc' : '#f9fafb', boxShadow: active ? theme.shadowSm : 'none', color: active ? theme.heading : '#94a3b8', fontSize: 12, fontWeight: 700 }}>
+          <div
+            key={cat}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '6px 10px',
+              borderRadius: 999,
+              border: `1px solid ${active ? theme.cardBorder : '#e5e7eb'}`,
+              background: active ? '#f8fafc' : '#f9fafb',
+              boxShadow: active ? theme.shadowSm : 'none',
+              color: active ? theme.heading : '#94a3b8',
+              fontSize: 12,
+              fontWeight: 700
+            }}
+          >
             <span style={{ width: 10, height: 10, borderRadius: 999, background: palette[idx % palette.length], boxShadow: '0 0 0 2px #fff' }} />
             <span>{`S${idx + 1}`}</span>
             <span style={{ fontWeight: 600, color: active ? theme.muted : '#a3aab7' }}>→ {cat}</span>
@@ -393,6 +419,62 @@ function approxCategoryTotal(categoryName, { month, disease, department }) {
   return total;
 }
 
+function isoWeekToDate(isoWeekStr) {
+  // "2026-W05" -> Date of Monday of that ISO week
+  const [yPart, wPart] = isoWeekStr.split("-W");
+  const year = parseInt(yPart, 10);
+  const week = parseInt(wPart, 10);
+
+  // Jan 4th is always in week 1
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const day = jan4.getUTCDay() || 7; // Sunday -> 7
+  const mondayWeek1 = new Date(jan4);
+  mondayWeek1.setUTCDate(jan4.getUTCDate() - (day - 1));
+
+  const monday = new Date(mondayWeek1);
+  monday.setUTCDate(mondayWeek1.getUTCDate() + (week - 1) * 7);
+  return monday; // Monday
+}
+
+function monthIndexFromISOWeek(isoWeekStr) {
+  const d = isoWeekToDate(isoWeekStr);
+  return d.getUTCMonth(); // 0-11
+}
+
+function shortWeekLabel(isoWeekStr) {
+  // "2026-W05" -> "W05"
+  const parts = isoWeekStr.split("-W");
+  return parts.length === 2 ? `W${parts[1]}` : isoWeekStr;
+}
+
+
+// --------- ALIGN & SUM HELPERS (FIXES refresh/flat issues) ---------
+function sumSeriesByPeriod(seriesObj, diseases) {
+  // seriesObj example: { "Dengue": [{period,value},...], "Asthma": [...] }
+  const totals = new Map();
+
+  diseases.forEach((dis) => {
+    const arr = seriesObj?.[dis] || [];
+    arr.forEach(({ period, value }) => {
+      if (!period) return;
+      totals.set(period, (totals.get(period) || 0) + (Number(value) || 0));
+    });
+  });
+
+  const periods = Array.from(totals.keys()).sort(); // "2026-01" sorts ok, "2026-W05" also ok
+  const summed = periods.map((p) => totals.get(p) || 0);
+  return { periods, summed };
+}
+
+function sumMonthlyAligned(apiData, diseases) {
+  const monthlyObj = apiData?.dashboard?.monthlyForecasts || {};
+  return sumSeriesByPeriod(monthlyObj, diseases);
+}
+
+function sumWeeklyAligned(apiData, diseases) {
+  const weeklyObj = apiData?.forecast?.weeklyForecasts || {};
+  return sumSeriesByPeriod(weeklyObj, diseases);
+}
 /* ----------------------------------------------------------
    MAIN DASHBOARD
 -----------------------------------------------------------*/
@@ -400,10 +482,201 @@ const MethaRoleDashboard = () => {
   const [month, setMonth] = useState('All');
   const [disease, setDisease] = useState('All');
   const [department, setDepartment] = useState('All');
+  const [{ apiData, isLoading, serverError }] = useFetch("auth/dashboard");
 
-  const { xLabels, lineData, heatmapData, heatmapRaw, colHeadersS, rowLabels, kpi, highPriorityAlerts } = useMemo(() => {
-    return computeMetrics({ month, disease, department });
-  }, [month, disease, department]);
+
+
+  const computed = useMemo(() => {
+  const fallback = {
+    categories: [],
+    xLabels: [],
+    lineData: [],
+    heatmapRaw: [[0]],
+    heatmapData: [[0]],
+    colHeadersS: [],
+    rowLabels: [],
+    kpi: {
+      influenza: { value: 0, sub: "" },
+      dengue: { value: 0, sub: "" },
+      asthma: { value: 0, sub: "" },
+    },
+    highPriorityAlerts: 0,
+    xAxisTitle: "Month",
+  };
+
+  if (!apiData) return fallback;
+
+  const categories = Object.keys(apiData?.dashboard?.monthlyForecasts || {});
+  const monthlyForecasts = apiData?.dashboard?.monthlyForecasts || {};
+  const hm = apiData?.dashboard?.heatmap || {};
+
+ // ---------- KPI + Monthly Dynamic Values ----------
+
+function monthPeriodFromName(monthName) {
+  const genYear = apiData?.generatedAt
+    ? new Date(apiData.generatedAt).getUTCFullYear()
+    : 2026;
+
+  const mIdx = MONTHS.indexOf(monthName);
+  if (mIdx < 0) return null;
+
+  const mm = String(mIdx + 1).padStart(2, "0");
+  return `${genYear}-${mm}`;
+}
+
+function sumMonthValue(diseaseName, monthName) {
+  const arr = apiData?.dashboard?.monthlyForecasts?.[diseaseName] || [];
+
+  if (monthName === "All") {
+    return arr.reduce((s, p) => s + (Number(p.value) || 0), 0);
+  }
+
+  const period = monthPeriodFromName(monthName);
+  const hit = arr.find(p => p.period === period);
+  return Number(hit?.value) || 0;
+}
+
+// KPI values update when month changes
+// KPI values update when month changes
+const kpi = {
+  influenza: {
+    value: sumMonthValue("Influenza", month),
+    sub: month === "All" ? "Year total" : month
+  },
+  dengue: {
+    value: sumMonthValue("Dengue", month),
+    sub: month === "All" ? "Year total" : month
+  },
+  asthma: {
+    value: sumMonthValue("Asthma", month),
+    sub: month === "All" ? "Year total" : month
+  },
+};
+
+// ---------- Top Diseases for Selected Month ----------
+
+const topN = 5;
+
+const ranked = categories
+  .map((dis) => ({ dis, val: sumMonthValue(dis, month) }))
+  .sort((a, b) => b.val - a.val);
+
+const topDiseasesForMonth = ranked.slice(0, topN);
+  const highPriorityAlerts = ALERTS_DATA.filter(a => a.priority === "High").length;
+
+ // --- LINE CHART: Forecasted Cases ---
+// --- LINE CHART: Forecasted Cases ---
+// --- LINE CHART: Forecasted Cases (ALIGNED + SAFE) ---
+const monthIndex = month === "All" ? -1 : MONTHS.findIndex(m => m === month);
+
+// which diseases to use
+const safeDiseasesToUse =
+  disease === "All"
+    ? categories
+    : categories.includes(disease)
+      ? [disease]
+      : categories; // fallback if disease not in list
+
+let xLabels = [];
+let lineData = [];
+let xAxisTitle = "Month";
+
+if (monthIndex === -1) {
+  // Month=All -> 12 monthly points (or whatever exists in JSON)
+  const { periods, summed } = sumMonthlyAligned(apiData, safeDiseasesToUse);
+  xLabels = periods.map(formatMonthLabelFromPeriod);
+  lineData = summed;
+  xAxisTitle = "Month";
+} else {
+  // Month=specific -> 4-6 weekly points inside that month
+  const { periods, summed } = sumWeeklyAligned(apiData, safeDiseasesToUse);
+
+  const filtered = periods
+    .map((p, i) => ({ period: p, value: summed[i] }))
+    .filter(item => monthIndexFromISOWeek(item.period) === monthIndex);
+
+  // If filtering returns too few points, fallback to first 4-6 points
+  const use = filtered.length >= 2
+    ? filtered
+    : periods.slice(0, 6).map((p, i) => ({ period: p, value: summed[i] }));
+
+  xLabels = use.map(x => shortWeekLabel(x.period));
+  lineData = use.map(x => x.value);
+  xAxisTitle = "Week";
+}
+
+  // --- HEATMAP: Monthly Trends ---
+  // Your heatmap is months x diseases values.
+  // We will filter by disease and/or month.
+  const heatmapMonths = hm?.months || [];
+  const heatmapSeriesLabels = hm?.seriesLabels || []; // ["S1","S2"...]
+  const heatmapDiseaseMap = hm?.diseaseMap || {};     // S1->DiseaseName
+  const heatmapValues = hm?.values || [];
+
+  // Build disease order from heatmap columns (S1..Sn)
+  const heatmapDiseases = heatmapSeriesLabels.map(s => heatmapDiseaseMap[s]);
+
+  // Column indexes to include
+  let colIdxs = [];
+  if (disease === "All") {
+    colIdxs = heatmapDiseases
+      .map((d, idx) => (categories.includes(d) ? idx : null))
+      .filter(v => v !== null);
+  } else {
+    const idx = heatmapDiseases.indexOf(disease);
+    colIdxs = idx >= 0 ? [idx] : [];
+  }
+
+  // Row indexes to include
+  let rowIdxs = [];
+  if (month === "All") {
+    rowIdxs = heatmapMonths.map((_, i) => i);
+  } else {
+    const abbr = month.slice(0, 3);
+    const r = heatmapMonths.indexOf(abbr);
+    rowIdxs = r >= 0 ? [r] : [];
+  }
+
+  // Build filtered heatmap raw
+  const heatmapRaw = rowIdxs.length && colIdxs.length
+    ? rowIdxs.map(r => colIdxs.map(c => heatmapValues?.[r]?.[c] ?? 0))
+    : [[0]];
+
+  const rowLabels = rowIdxs.map(r => heatmapMonths[r]) || [];
+  const colHeadersS = colIdxs.map((_, i) => `S${i + 1}`); // relabel displayed columns
+
+  return {
+  categories,
+  topDiseasesForMonth,   // 👈 ADD THIS
+  xLabels,
+  lineData,
+  heatmapRaw,
+  heatmapData: normalizeGrid(heatmapRaw),
+  colHeadersS,
+  rowLabels,
+  kpi,
+  highPriorityAlerts,
+  xAxisTitle
+};
+}, [apiData, month, disease]);
+
+const {
+  categories,
+  topDiseasesForMonth,   // 👈 ADD THIS
+  xLabels,
+  lineData,
+  heatmapData,
+  heatmapRaw,
+  colHeadersS,
+  rowLabels,
+  kpi,
+  highPriorityAlerts,
+  xAxisTitle,
+} = computed;
+
+  // ✅ Early returns must be AFTER hooks
+  if (isLoading) return <div style={{ padding: 28 }}>Loading...</div>;
+  if (serverError) return <div style={{ padding: 28 }}>Error loading dashboard</div>;
 
   const subtitle = month === 'All' ? 'Year view • Monthly totals' : `Weekly view for ${month}`;
   const activeDisease = disease === 'All' ? null : disease;
@@ -415,6 +688,10 @@ const MethaRoleDashboard = () => {
       <div style={{ background: '#0b2a5b', color: '#fff', padding: 20, borderRadius: 14, boxShadow: theme.shadowLg }}>
         <h1 style={{ fontSize: 28, fontWeight: 800, margin: 0 }}>Ilness_Injury Dashboard</h1>
         <p style={{ margin: 0, marginTop: 6, opacity: 0.9 }}>{subtitle}</p>
+        <p style={{ margin: 0, marginTop: 6, opacity: 0.85, fontSize: 12 }}>
+        Top diseases ({month === "All" ? "overall" : month}):{" "}
+         {topDiseasesForMonth?.map(d => `${d.dis} (${d.val})`).join(", ")}
+        </p>
       </div>
 
       {/* KPI row */}
@@ -428,15 +705,15 @@ const MethaRoleDashboard = () => {
       {/* Filters */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginTop: 16, marginBottom: 8 }}>
         <Dropdown label="Month" value={month} onChange={setMonth} options={['All', ...MONTHS]} />
-        <Dropdown label="Disease" value={disease} onChange={setDisease} options={['All', ...CATEGORIES]} />
+        <Dropdown label="Disease" value={disease} onChange={setDisease} options={['All', ...categories]} />
         <Dropdown label="Department" value={department} onChange={setDepartment} options={['All', ...DEPARTMENTS]} />
       </div>
 
       {/* Charts */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginTop: 12 }}>
         <Card title="Forecasted Cases">
-          <LineChart data={lineData} xLabels={xLabels} yLabel="Cases" xAxisTitle={month === 'All' ? 'Month' : 'Week'} />
-          <SChips activeDisease={activeDisease} />
+          <LineChart data={lineData} xLabels={xLabels} yLabel="Cases" xAxisTitle={xAxisTitle} />
+          <SChips categories={categories || []} activeDisease={activeDisease} />
         </Card>
 
         <Card title="Monthly Trends">
@@ -463,5 +740,21 @@ const HeatLegend = () => (
     </div>
   </div>
 );
+
+
+const MONTH_ABBR = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+function periodToMonthIndex(period) {
+  // "2026-01" -> 0
+  if (!period || period.length < 7) return -1;
+  const mm = period.slice(5, 7);
+  const idx = parseInt(mm, 10) - 1;
+  return Number.isFinite(idx) ? idx : -1;
+}
+
+function formatMonthLabelFromPeriod(period) {
+  const idx = periodToMonthIndex(period);
+  return idx >= 0 ? MONTH_ABBR[idx] : period;
+}
 
 export default MethaRoleDashboard;
