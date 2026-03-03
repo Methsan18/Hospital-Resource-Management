@@ -24,7 +24,7 @@ import ETU_DocDashboard from "../Pages/ETU_Doctor/ETU-DocDashboard";
 import ETU_DocLayout from "../Pages/ETU_Doctor/ETU-DocLayout";
 import DocManage from "../Pages/ETU_Doctor/DocManage";
 import DocAppointments from "../Pages/ETU_Doctor/DocAppointments";
-import ETU_BedForecast from "../Pages/ETU_Head/ETU_BedForecast";/////
+import ETU_BedInventory from "../Pages/ETU_Head/ETU_BedInventory";/////
 import ETU_BedTrend from "../Pages/ETU_Head/ETU_BedTrend";//////
 import ETU_BedOptimization from "../Pages/ETU_Head/ETU_BedOptimization";//////
 
@@ -35,7 +35,7 @@ import Equipment from "../Pages/ETU_Nurse/Equipment";
 import ETU_NurseAddBed from "../Pages/ETU_Nurse/ETU_NurseAddBed";////////
 import ETU_NurseDailyInput from "../Pages/ETU_Nurse/ETU_NurseDailyInput";///////
 import ETU_NurseInventory from "../Pages/ETU_Nurse/ETU_NurseInventory";/////////
-import ETU_NurseForecast from "../Pages/ETU_Nurse/ETU_NurseForecast";/////
+import ETU_NurseOptimization from "../Pages/ETU_Nurse/ETU_NurseOptimization";/////
 import ETU_NurseTrend from "../Pages/ETU_Nurse/ETU_NurseTrend";//////
 import ETU_HeadIllnessAlerts from "../Pages/ETU_Head/ETU_HeadIllnessAlerts";
 import ETU_HeadIllnessForecast from "../Pages/ETU_Head/ETU_HeadIllnessForecast";
@@ -66,9 +66,20 @@ import EditProduct from "../Pages/Store_Manager/EditProduct";
 import Alerts from "../Pages/Store_Manager/Alerts"; 
 import InventoryReqStore from "../Pages/Store_Manager/Inventory_Requests";
 
-import WardNurseDashboard from "../Pages/Ward_Nurse/WardNurseDashboard";
-import WardNurseLayout from "../Pages/Ward_Nurse/WardNurseLayout";  
-import WardNurseDailyInput from "../Pages/Ward_Nurse/WardNurseDailyInput";/////  
+import Ward_A_NurseDashboard from "../Pages/Ward_A_Nurse/Ward_A_NurseDashboard";
+import Ward_A_NurseLayout from "../Pages/Ward_A_Nurse/Ward_A_NurseLayout";  
+import Ward_A_NurseDailyInput from "../Pages/Ward_A_Nurse/Ward_A_NurseDailyInput";/////
+import Ward_A_NurseInventory from "../Pages/Ward_A_Nurse/Ward_A_NurseInventory";//////  
+
+import Ward_B_NurseDashboard from "../Pages/Ward_B_Nurse/Ward_B_NurseDashboard";
+import Ward_B_NurseLayout from "../Pages/Ward_B_Nurse/Ward_B_NurseLayout";  
+import Ward_B_NurseDailyInput from "../Pages/Ward_B_Nurse/Ward_B_NurseDailyInput";/////
+import Ward_B_NurseInventory from "../Pages/Ward_B_Nurse/Ward_B_NurseInventory";////// 
+
+import Ward_G_NurseDashboard from "../Pages/Ward_G_Nurse/Ward_G_NurseDashboard";
+import Ward_G_NurseLayout from "../Pages/Ward_G_Nurse/Ward_G_NurseLayout";  
+import Ward_G_NurseDailyInput from "../Pages/Ward_G_Nurse/Ward_G_NurseDailyInput";/////
+import Ward_G_NurseInventory from "../Pages/Ward_G_Nurse/Ward_G_NurseInventory";////// 
 
 import MethaRoleLayout from "../Pages/MethaRole/MethaRoleLayout";
 import MethaRoleDashboard from "../Pages/MethaRole/MethaRoleDashboard";
@@ -112,7 +123,7 @@ const router = createBrowserRouter([
       { path:"/ETU_Head/dashboard/graphs", element:<ETU_HeadGraphs/> },
       { path:"/ETU_Head/dashboard/medandequip", element:<MedandEquip/> },
       { path:"/ETU_Head/dashboard/doctors", element:<DocDetails/> },
-      { path:"/ETU_Head/dashboard/forecast", element:<ETU_BedForecast/> },////////
+      { path:"/ETU_Head/dashboard/ETU_BedInventory", element:<ETU_BedInventory/> },////////
       { path:"/ETU_Head/dashboard/trend", element:<ETU_BedTrend/> },///////
       { path:"/ETU_Head/dashboard/optimization", element:<ETU_BedOptimization/> },///////
       { path:"/ETU_Head/dashboard/ETU_HeadIllnessAlerts", element:<ETU_HeadIllnessAlerts/> },
@@ -143,7 +154,7 @@ const router = createBrowserRouter([
       { path:"/ETU_Nurse/dashboard/ETU_NurseAddBed", element:<ETU_NurseAddBed/> },/////
       { path:"/ETU_Nurse/dashboard/ETU_NurseDailyInput", element:<ETU_NurseDailyInput/> },///////
       { path:"/ETU_Nurse/dashboard/ETU_NurseInventory", element:<ETU_NurseInventory/> },//////
-      { path:"/ETU_Nurse/dashboard/ETU_NurseForecast", element:<ETU_NurseForecast/> },///////
+      { path:"/ETU_Nurse/dashboard/ETU_NurseOptimization", element:<ETU_NurseOptimization/> },///////
       { path:"/ETU_Nurse/dashboard/ETU_NurseTrend", element:<ETU_NurseTrend/> },//////
       
     ]
@@ -207,11 +218,34 @@ const router = createBrowserRouter([
   },
 
   {
-    path:"/Ward_Nurse/dashboard",
-    element:<WardNurseLayout/>,
+    path:"/Ward_A_Nurse/dashboard",
+    element:<Ward_A_NurseLayout/>,
     children:[
-      { path:"/Ward_Nurse/dashboard/WardNurseDashboard", element:<WardNurseDashboard/> },///////
-      { path:"/Ward_Nurse/dashboard/WardNurseDailyInput", element:<WardNurseDailyInput/> }/////
+      { path:"/Ward_A_Nurse/dashboard/Ward_A_NurseDashboard", element:<Ward_A_NurseDashboard/> },///////
+      { path:"/Ward_A_Nurse/dashboard/Ward_A_NurseDailyInput", element:<Ward_A_NurseDailyInput/> },/////
+      { path:"/Ward_A_Nurse/dashboard/Ward_A_NurseInventory", element:<Ward_A_NurseInventory/> },
+      
+    ]
+  },
+
+  {
+    path:"/Ward_B_Nurse/dashboard",
+    element:<Ward_B_NurseLayout/>,
+    children:[
+      { path:"/Ward_B_Nurse/dashboard/Ward_B_NurseDashboard", element:<Ward_B_NurseDashboard/> },///////
+      { path:"/Ward_B_Nurse/dashboard/Ward_B_NurseDailyInput", element:<Ward_B_NurseDailyInput/> },/////
+      { path:"/Ward_B_Nurse/dashboard/Ward_B_NurseInventory", element:<Ward_B_NurseInventory/> },
+      
+    ]
+  },
+
+  {
+    path:"/Ward_G_Nurse/dashboard",
+    element:<Ward_G_NurseLayout/>,
+    children:[
+      { path:"/Ward_G_Nurse/dashboard/Ward_G_NurseDashboard", element:<Ward_G_NurseDashboard/> },///////
+      { path:"/Ward_G_Nurse/dashboard/Ward_G_NurseDailyInput", element:<Ward_G_NurseDailyInput/> },/////
+      { path:"/Ward_G_Nurse/dashboard/Ward_G_NurseInventory", element:<Ward_G_NurseInventory/> },
       
     ]
   },

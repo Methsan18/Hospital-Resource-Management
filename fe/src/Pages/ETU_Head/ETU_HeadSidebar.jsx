@@ -25,21 +25,27 @@ const ETU_HeadSidebar = () => {
 
   const itemClass = (path) =>
     `transition-all duration-200 rounded-lg px-3 py-2 flex items-center gap-2 ${
-      isActive(path) ? 'bg-blue-200 text-blue-900 font-semibold' : 'text-slate-800 hover:bg-blue-100'
+      isActive(path)
+        ? "bg-blue-200 text-blue-900 font-semibold"
+        : "text-slate-800 hover:bg-blue-100"
     }`;
 
+  // Corrected Paths to match the actual navigation links below
   const bedsPaths = [
-    "/ETU_Head/dashboard/trend",
-    "/ETU_Head/dashboard/forecast",
     "/ETU_Head/dashboard/optimization",
+    "/ETU_Head/dashboard/trend",
+    "/ETU_Head/dashboard/ETU_BedInventory",
   ];
 
   const isBedsActive = bedsPaths.includes(location.pathname);
+
+  // Corrected Paths to match the actual navigation links below
   const illnessPaths = [
-    "/ETU_Head/dashboard/illness/alerts",
-    "/ETU_Head/dashboard/illness/forecast",
-    "/ETU_Head/dashboard/illness/trends",
+    "/ETU_Head/dashboard/ETU_HeadIllnessAlerts",
+    "/ETU_Head/dashboard/ETU_HeadIllnessForecast",
+    "/ETU_Head/dashboard/ETU_HeadIllnessTrendsPage",
   ];
+  
   const isIllnessActive = illnessPaths.includes(location.pathname);
 
   return (
@@ -58,7 +64,6 @@ const ETU_HeadSidebar = () => {
 
         <Sidebar.Items className="bg-transparent">
           <Sidebar.ItemGroup className="bg-transparent space-y-1">
-
             <Sidebar.Item
               onClick={() => navigate("/ETU_Head/dashboard/dashboard")}
               icon={HiOutlineHome}
@@ -91,34 +96,54 @@ const ETU_HeadSidebar = () => {
               Doctor Details
             </Sidebar.Item>
 
-          
-            {/* Bed Forecasting: collapsible parent with three sub-pages */}
+            {/* Bed Forecasting: Collapsible Parent Group */}
             <div className="bg-transparent mt-4">
               <Sidebar.Item
-                onClick={() => setBedsOpen((s) => !s)}
+                onClick={() => setBedsOpen(!bedsOpen)} /* TOGGLE ONLY - No Navigation */
                 icon={HiOutlineChartBar}
-                className={`transition-all duration-200 rounded-lg px-3 py-2 flex items-center gap-2 ${
-                  isBedsActive ? 'bg-blue-200 text-blue-900 font-semibold' : 'text-slate-800 hover:bg-blue-100'
+                className={`cursor-pointer transition-all duration-200 rounded-lg px-3 py-2 flex items-center gap-2 ${
+                  isBedsActive
+                    ? "bg-blue-200 text-blue-900 font-semibold"
+                    : "text-slate-800 hover:bg-blue-100"
                 }`}
               >
                 <div className="flex items-center justify-between w-full">
                   <span>Bed Forecasting</span>
-                  <HiOutlineChevronDown className={`ml-2 transform transition-transform ${bedsOpen ? 'rotate-180' : 'rotate-0'}`} />
+                  <HiOutlineChevronDown
+                    className={`ml-2 transform transition-transform duration-200 ${
+                      bedsOpen ? "rotate-180" : "rotate-0"
+                    }`}
+                  />
                 </div>
               </Sidebar.Item>
 
+              {/* Sub-Pages (Only displayed when Bed Forecasting is clicked/Open) */}
               {bedsOpen && (
                 <div className="pl-6 mt-2 space-y-1">
-                  <Sidebar.Item onClick={() => navigate('/ETU_Head/dashboard/trend')} icon={HiOutlineChartBar} className={itemClass('/ETU_Head/dashboard/trend')}>
+                  {/* Sub-Page 1: Optimization */}
+                  <Sidebar.Item
+                    onClick={() => navigate("/ETU_Head/dashboard/optimization")}
+                    icon={HiOutlineClipboardList}
+                    className={itemClass("/ETU_Head/dashboard/optimization")}
+                  >
+                    Optimization Page
+                  </Sidebar.Item>
+
+                  {/* Sub-Page 2: Trends */}
+                  <Sidebar.Item
+                    onClick={() => navigate("/ETU_Head/dashboard/trend")}
+                    icon={HiOutlineChartBar}
+                    className={itemClass("/ETU_Head/dashboard/trend")}
+                  >
                     Trend Page
                   </Sidebar.Item>
 
-                  <Sidebar.Item onClick={() => navigate('/ETU_Head/dashboard/forecast')} icon={HiOutlineBeaker} className={itemClass('/ETU_Head/dashboard/forecast')}>
-                    Forecast Page
-                  </Sidebar.Item>
-
-                  <Sidebar.Item onClick={() => navigate('/ETU_Head/dashboard/optimization')} icon={HiOutlineClipboardList} className={itemClass('/ETU_Head/dashboard/optimization')}>
-                    Optimization Page
+                  <Sidebar.Item
+                    onClick={() => navigate("/ETU_Head/dashboard/ETU_BedInventory")}
+                    icon={HiOutlineChartBar}
+                    className={itemClass("/ETU_Head/dashboard/ETU_BedInventory")}
+                  >
+                    Bed Inventory
                   </Sidebar.Item>
                 </div>
               )}
@@ -130,32 +155,49 @@ const ETU_HeadSidebar = () => {
                 onClick={() => setIllnessOpen((s) => !s)}
                 icon={HiOutlineChartBar}
                 className={`transition-all duration-200 rounded-lg px-3 py-2 flex items-center gap-2 ${
-                  isIllnessActive ? 'bg-blue-200 text-blue-900 font-semibold' : 'text-slate-800 hover:bg-blue-100'
+                  isIllnessActive
+                    ? "bg-blue-200 text-blue-900 font-semibold"
+                    : "text-slate-800 hover:bg-blue-100"
                 }`}
               >
                 <div className="flex items-center justify-between w-full">
                   <span>Illness Forecasting</span>
-                  <HiOutlineChevronDown className={`ml-2 transform transition-transform ${illnessOpen ? 'rotate-180' : 'rotate-0'}`} />
+                  <HiOutlineChevronDown
+                    className={`ml-2 transform transition-transform ${
+                      illnessOpen ? "rotate-180" : "rotate-0"
+                    }`}
+                  />
                 </div>
               </Sidebar.Item>
 
               {illnessOpen && (
                 <div className="pl-6 mt-2 space-y-1">
-                  <Sidebar.Item onClick={() => navigate('/ETU_Head/dashboard/ETU_HeadIllnessAlerts')} icon={HiOutlineChartBar} className={itemClass('/ETU_Head/dashboard/ETU_HeadIllnessAlerts')}>
+                  <Sidebar.Item
+                    onClick={() => navigate("/ETU_Head/dashboard/ETU_HeadIllnessAlerts")}
+                    icon={HiOutlineChartBar}
+                    className={itemClass("/ETU_Head/dashboard/ETU_HeadIllnessAlerts")}
+                  >
                     Alerts
                   </Sidebar.Item>
 
-                  <Sidebar.Item onClick={() => navigate('/ETU_Head/dashboard/ETU_HeadIllnessForecast')} icon={HiOutlineBeaker} className={itemClass('/ETU_Head/dashboard/ETU_HeadIllnessForecast')}>
+                  <Sidebar.Item
+                    onClick={() => navigate("/ETU_Head/dashboard/ETU_HeadIllnessForecast")}
+                    icon={HiOutlineBeaker}
+                    className={itemClass("/ETU_Head/dashboard/ETU_HeadIllnessForecast")}
+                  >
                     Forecast Page
                   </Sidebar.Item>
 
-                  <Sidebar.Item onClick={() => navigate('/ETU_Head/dashboard/ETU_HeadIllnessTrendsPage')} icon={HiOutlineClipboardList} className={itemClass('/ETU_Head/dashboard/ETU_HeadIllnessTrendsPage')}>
+                  <Sidebar.Item
+                    onClick={() => navigate("/ETU_Head/dashboard/ETU_HeadIllnessTrendsPage")}
+                    icon={HiOutlineClipboardList}
+                    className={itemClass("/ETU_Head/dashboard/ETU_HeadIllnessTrendsPage")}
+                  >
                     Trends
                   </Sidebar.Item>
                 </div>
               )}
             </div>
-
           </Sidebar.ItemGroup>
 
           {/* Logout */}
