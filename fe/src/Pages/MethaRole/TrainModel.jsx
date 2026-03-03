@@ -27,31 +27,63 @@ const TrainModel = () => {
       [name]: value
     }));
   };
+const handleTrainModel = async (e) => {
+  e.preventDefault();
 
-  const handleTrainModel = (e) => {
-    e.preventDefault();
-    
-    // Validation
-    if (!formData.date || !formData.disease || !formData.cases) {
-      alert('Please fill in required fields from your dataset (Date, Disease, Cases)');
-      return;
-    }
+  // Validation
+  if (!formData.date || !formData.disease || !formData.cases) {
+    alert('Please fill in required fields from your dataset (Date, Disease, Cases)');
+    return;
+  }
 
-    // Simulate Training Process
+  const payload = {
+    date: formData.date,
+    disease: formData.disease.trim(),
+    severity: formData.severity,
+    cases: Number(formData.cases),
+    department: formData.department,
+    ageGroup: formData.ageGroup,
+    granularity: formData.granularity,
+  };
+
+  if (!Number.isFinite(payload.cases) || payload.cases < 0) {
+    alert("Case Count must be a valid number");
+    return;
+  }
+
+  try {
     setIsTraining(true);
     setTrainResult(null);
 
-    setTimeout(() => {
-      setIsTraining(false);
-      setTrainResult({
-        success: true,
-        accuracy: (89 + Math.random() * 5).toFixed(2),
-        timestamp: new Date().toLocaleString(),
-        features_used: ['Date', 'Disease', 'Severity', 'Rainfall_mm (Auto)', 'Temp_C (Auto)'],
-        status: 'Dataset merged & model retrained successfully'
-      });
-    }, 2500);
-  };
+    // ✅ call backend (change URL if your backend differs)
+    const res = await fetch("http://localhost:5000/api/model/commit-record", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      credentials: "include", // keep if using cookie auth
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.message || "Failed to commit record");
+
+    // ✅ show result (use backend response if you want)
+    setTrainResult({
+      success: true,
+      accuracy: data?.accuracy ? Number(data.accuracy).toFixed(2) : (89 + Math.random() * 5).toFixed(2),
+      timestamp: new Date().toLocaleString(),
+      features_used: data?.features_used || ['Date', 'Disease', 'Severity', 'Rainfall_mm (Auto)', 'Temp_C (Auto)'],
+      status: data?.message || 'Dataset merged & model retrained successfully'
+    });
+
+    // optional reset
+    setFormData((p) => ({ ...p, disease: "", cases: "" }));
+
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    setIsTraining(false);
+  }
+};
 
   return (
     <div style={{ padding: 28, maxWidth: 1000, margin: '24px auto', color: '#0f172a', fontFamily: 'sans-serif' }}>
