@@ -535,6 +535,14 @@ function sumMonthValue(diseaseName, monthName) {
   const hit = arr.find(p => p.period === period);
   return Number(hit?.value) || 0;
 }
+// ✅ SAME priority rules as Alerts page (edit thresholds if needed)
+const PRIORITY_RULES = { High: 800, Moderate: 400, Low: 0 };
+
+function priorityFromCount(count) {
+  if (count >= PRIORITY_RULES.High) return "High";
+  if (count >= PRIORITY_RULES.Moderate) return "Moderate";
+  return "Low";
+}
 
 // KPI values update when month changes
 // KPI values update when month changes
@@ -562,8 +570,14 @@ const ranked = categories
   .sort((a, b) => b.val - a.val);
 
 const topDiseasesForMonth = ranked.slice(0, topN);
-  const highPriorityAlerts = ALERTS_DATA.filter(a => a.priority === "High").length;
+// ✅ KPI cards = Top 3 diseases for selected month
+const top3DiseasesForMonth = ranked.slice(0, 3);
 
+  // ✅ High Priority Alerts count based on selected month (same logic as Alerts page)
+const highPriorityAlerts = categories
+  .map((d) => sumMonthValue(d, month))
+  .filter((total) => priorityFromCount(total) === "High")
+  .length;
  // --- LINE CHART: Forecasted Cases ---
 // --- LINE CHART: Forecasted Cases ---
 // --- LINE CHART: Forecasted Cases (ALIGNED + SAFE) ---
@@ -648,6 +662,7 @@ if (monthIndex === -1) {
   return {
   categories,
   topDiseasesForMonth,   // 👈 ADD THIS
+  top3DiseasesForMonth,
   xLabels,
   lineData,
   heatmapRaw,
@@ -662,7 +677,8 @@ if (monthIndex === -1) {
 
 const {
   categories,
-  topDiseasesForMonth,   // 👈 ADD THIS
+  topDiseasesForMonth,  
+  top3DiseasesForMonth,  // 👈 ADD THIS
   xLabels,
   lineData,
   heatmapData,
@@ -695,12 +711,27 @@ const {
       </div>
 
       {/* KPI row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 18, marginTop: 18 }}>
-        <KpiCard icon={<Thermometer size={24} color="#1e3a8a" />} title="Influenza Cases" value={kpi.influenza.value} sub={kpi.influenza.sub} />
-        <KpiCard icon={<Activity size={24} color="#0ea5e9" />} title="Dengue Cases" value={kpi.dengue.value} sub={kpi.dengue.sub} />
-        <KpiCard icon={<HeartPulse size={24} color="#1d4ed8" />} title="Asthma Incidents" value={kpi.asthma.value} sub={kpi.asthma.sub} />
-        <AlertCard count={highPriorityAlerts} />
-      </div>
+      {/* KPI row (Top 3 diseases for selected month) */}
+<div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 18, marginTop: 18 }}>
+  {(top3DiseasesForMonth || []).map((item, index) => {
+    const icons = [
+      <Thermometer size={24} color="#1e3a8a" />,
+      <Activity size={24} color="#0ea5e9" />,
+      <HeartPulse size={24} color="#1d4ed8" />,
+    ];
+
+    return (
+      <KpiCard
+        key={item.dis}
+        icon={icons[index] || icons[0]}
+        title={`${item.dis} Cases`}
+        value={item.val}
+        sub={month === "All" ? "Year total" : month}
+      />
+    );
+  })}
+  <AlertCard count={highPriorityAlerts} />
+</div>
 
       {/* Filters */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginTop: 16, marginBottom: 8 }}>
