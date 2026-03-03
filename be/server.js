@@ -31,7 +31,8 @@ app.use(express.json()); // built-in body parser
 
 const authRoutes = require('./routes/auth.router');
 
-
+const modelRouter = require("./routes/model.router");
+app.use("/api/model", modelRouter);
 
 // Users
 const userRoutes = require("./routes/Users");
