@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { CheckCircle, Database, FileText } from 'lucide-react';
+import axios from 'axios';
+import { CheckCircle, Database, FileText, AlertCircle, Loader2 } from 'lucide-react';
 
 const TrainModel = () => {
   // Enhanced State to match your Dataset + Research Requirements
@@ -15,6 +16,7 @@ const TrainModel = () => {
 
   const [isTraining, setIsTraining] = useState(false);
   const [trainResult, setTrainResult] = useState(null);
+  const [error, setError] = useState(null);
 
   // Derived from your CSV values
   const departments = ['OPD', 'Medical Ward', 'Emergency', 'ICU', 'Pediatrics'];
@@ -28,29 +30,62 @@ const TrainModel = () => {
     }));
   };
 
-  const handleTrainModel = (e) => {
+  const handleTrainModel = async (e) => {
     e.preventDefault();
     
     // Validation
     if (!formData.date || !formData.disease || !formData.cases) {
-      alert('Please fill in required fields from your dataset (Date, Disease, Cases)');
+      setError('Please fill in required fields: Date, Disease, Cases');
       return;
     }
 
-    // Simulate Training Process
+    // Clear previous errors
+    setError(null);
     setIsTraining(true);
     setTrainResult(null);
 
-    setTimeout(() => {
-      setIsTraining(false);
-      setTrainResult({
-        success: true,
-        accuracy: (89 + Math.random() * 5).toFixed(2),
-        timestamp: new Date().toLocaleString(),
-        features_used: ['Date', 'Disease', 'Severity', 'Rainfall_mm (Auto)', 'Temp_C (Auto)'],
-        status: 'Dataset merged & model retrained successfully'
+    try {
+      // Send data to backend API
+      const response = await axios.post('http://127.0.0.1:5001/save_illness_input', {
+        date: formData.date,
+        disease: formData.disease,
+        severity: formData.severity,
+        cases: parseInt(formData.cases),
+        department: formData.department,
+        ageGroup: formData.ageGroup,
+        granularity: formData.granularity,
+        timestamp: new Date().toISOString()
       });
-    }, 2500);
+
+      if (response.data.status === 'success') {
+        setTrainResult({
+          success: true,
+          accuracy: (89 + Math.random() * 5).toFixed(2),
+          timestamp: new Date().toLocaleString(),
+          features_used: ['Date', 'Disease', 'Severity', 'Cases', 'Department'],
+          status: 'Record successfully saved to database',
+          recordId: response.data.record_id
+        });
+
+        // Clear form
+        setFormData({
+          date: '',
+          disease: '',
+          severity: 'Medium',
+          cases: '',
+          department: 'OPD',
+          ageGroup: 'All Ages',
+          granularity: 'Weekly'
+        });
+      } else {
+        setError(response.data.message || 'Failed to save data');
+      }
+    } catch (err) {
+      console.error('API Error:', err);
+      setError(err.response?.data?.message || 'Backend connection failed. Ensure Flask server is running on port 5001.');
+    } finally {
+      setIsTraining(false);
+    }
   };
 
   return (
@@ -209,9 +244,33 @@ const TrainModel = () => {
                       gap: 10
                     }}
                   >
-                    {isTraining ? 'Integrating Dataset...' : '+ Commit Record to Model'}
+                    {isTraining ? (
+                      <>
+                        <Loader2 size={18} className="animate-spin" />
+                        Saving to Database...
+                      </>
+                    ) : (
+                      '📊 Save Record to Database'
+                    )}
                   </button>
                 </div>
+
+                {/* Error Alert */}
+                {error && (
+                  <div style={{
+                    background: '#fef2f2',
+                    border: '1px solid #fee2e2',
+                    borderRadius: 10,
+                    padding: 14,
+                    display: 'flex',
+                    gap: 12,
+                    alignItems: 'flex-start',
+                    color: '#991b1b'
+                  }}>
+                    <AlertCircle size={18} style={{ flexShrink: 0, marginTop: 2 }} />
+                    <div style={{ fontSize: 13, lineHeight: 1.5 }}>{error}</div>
+                  </div>
+                )}
 
               </div>
             </form>
@@ -224,20 +283,19 @@ const TrainModel = () => {
             {trainResult && (
               <div style={{
                 background: '#f0fdf4',
-                border: '1px solid #86efac',
+                border: '2px solid #86efac',
                 borderRadius: 16,
                 padding: 20,
                 animation: 'fadeIn 0.5s'
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
                   <CheckCircle size={24} color="#16a34a" />
-                  <span style={{ fontSize: 16, fontWeight: 700, color: '#15803d' }}>Training Successful</span>
+                  <span style={{ fontSize: 16, fontWeight: 700, color: '#15803d' }}>✅ Record Saved Successfully</span>
                 </div>
                 <div style={{ fontSize: 14, color: '#166534', lineHeight: 1.6 }}>
-                  <p style={{margin: '4px 0'}}>New Model Accuracy: <strong>{trainResult.accuracy}%</strong></p>
-                  <p style={{margin: '4px 0', fontSize: 13}}>
-                    Features: <em>{trainResult.features_used.join(', ')}</em>
-                  </p>
+                  <p style={{margin: '6px 0'}}>📁 Saved to: <strong>Illness_Inputs Collection</strong></p>
+                  <p style={{margin: '6px 0', fontSize: 13}}>Disease: <strong>{trainResult.status}</strong></p>
+                  <p style={{margin: '6px 0', fontSize: 12, opacity: 0.8}}>ID: {trainResult.recordId}</p>
                 </div>
               </div>
             )}
@@ -271,10 +329,8 @@ const TrainModel = () => {
           </div>
         </div>
       </div>
-   
-    
-  );
-};
+    );
+  };
 
 // Internal styles
 const labelStyle = {
