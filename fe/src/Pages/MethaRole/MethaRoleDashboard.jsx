@@ -1,466 +1,363 @@
-import React, { useMemo, useState } from 'react';
-import { AlertCircle, ChevronDown, Activity, HeartPulse, Thermometer } from 'lucide-react';
+import React, { useMemo, useState, useEffect } from 'react';
+import axios from 'axios';
+import { AlertCircle, ChevronDown, Activity, HeartPulse, Thermometer, BrainCircuit, CloudRain, Loader2, TrendingUp } from 'lucide-react';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
-/* ----------------------------------------------------------
-   THEME
------------------------------------------------------------*/
+/* --- ANIMATION STYLES --- */
+const styles = `
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+  .animate-spin {
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+`;
+
+const styleSheet = document.createElement('style');
+styleSheet.textContent = styles;
+document.head.appendChild(styleSheet);
+
+/* --- THEME --- */
 const theme = {
   cardBg: '#fff',
   cardBorder: '#e6eef6',
   shadowLg: '0 10px 28px rgba(2,6,23,0.08)',
-  shadowMd: '0 8px 24px rgba(2,6,23,0.06)',
-  shadowSm: '0 4px 12px rgba(2,6,23,0.06)',
   muted: '#64748b',
   text: '#0f172a',
   heading: '#334155',
   accent: '#0ea5e9',
   grid: '#f1f5f9',
-  line: '#1e3a8a'
 };
 
-/* ----------------------------------------------------------
-   CONSTANTS & DATA
------------------------------------------------------------*/
-const MONTHS = [
-  'January','February','March','April','May','June',
-  'July','August','September','October','November','December'
-];
-const WEEK_LABELS = ['W1','W2','W3','W4'];
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const CATEGORIES = ['Dengue', 'Viral Fever', 'Respiratory Infection', 'Common Cold', 'Gastritis', 'Migraine', 'Diabetes', 'Leptospirosis', 'Dysentery', 'Typhoid', 'Chickenpox'];
 
-const CATEGORIES = [
-  'Influenza', 'Asthma', 'Dengue', 'COVID-19', 
-  'Malaria', 'Pneumonia', 'Chikungunya', 'Tuberculosis'
-];
+const MethaRoleDashboard = () => {
+  // State for Disease Selection
+  const [disease, setDisease] = useState('Dengue');
+  
+  // State for Predictions
+  const [weeklyPrediction, setWeeklyPrediction] = useState(null);
+  const [monthlyPrediction, setMonthlyPrediction] = useState(null);
+  const [weekOfMonth, setWeekOfMonth] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [chartData, setChartData] = useState([]);
 
-const DEPARTMENTS = ['General','Pediatrics','ETU','ICU','OPD'];
+  // Helper: Calculate week of month
+  const getWeekOfMonth = () => {
+    const today = new Date();
+    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+    const pastDaysOfMonth = today.getDate() - 1;
+    const week = Math.floor((pastDaysOfMonth + firstDay.getDay()) / 7) + 1;
+    return week;
+  };
 
-// ✅ SHARED ALERT DATA (To calculate the count)
-const ALERTS_DATA = [
-  { alert: 'Dengue', priority: 'High' },
-  { alert: 'Respiratory Infections', priority: 'High' },
-  { alert: 'Asthma', priority: 'Moderate' },
-  { alert: 'Fall-Related Injuries', priority: 'Moderate' },
-  { alert: 'Viral Fever', priority: 'Low' }
-];
+  const currentWeek = getWeekOfMonth();
+  const nextWeek = Math.min(currentWeek + 1, 4);
+  
+  // Helper: Get next month
+  const getNextMonth = () => {
+    const today = new Date();
+    const nextMonthDate = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    return MONTHS[nextMonthDate.getMonth()];
+  };
 
-/* ----------------------------------------------------------
-   MOCK VALUE GENERATOR
------------------------------------------------------------*/
-function valueFor(monthIdx, weekIdx, categoryIdx, deptIdx) {
-  const base = (monthIdx + 1) * 3 + (weekIdx + 1) * 5 + categoryIdx * 4 + deptIdx * 2;
-  const seasonal = [1.15, 1.10, 0.95, 0.90, 0.92, 0.95, 1.00, 1.05, 1.08, 1.12, 1.18, 1.20][monthIdx];
-  return Math.round(base * seasonal);
-}
+  const nextMonth = getNextMonth();
 
-/* ----------------------------------------------------------
-   UTILITIES
------------------------------------------------------------*/
-function normalizeGrid(grid) {
-  if (!grid || grid.length === 0) return [];
-  let min = Infinity, max = -Infinity;
-  grid.forEach(row => row.forEach(v => { min = Math.min(min, v); max = Math.max(max, v); }));
-  const range = max - min || 1;
-  return grid.map(row => row.map(v => (v - min) / range));
-}
-function hexToRgb(hex) {
-  const cleaned = hex.replace('#', '');
-  const bigint = parseInt(cleaned, 16);
-  return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 };
-}
-function sLabelForDisease(disease) {
-  const idx = CATEGORIES.indexOf(disease);
-  return idx >= 0 ? `S${idx + 1}` : 'S?';
-}
+  // ✅ EFFECT: FETCH BOTH WEEKLY AND MONTHLY PREDICTIONS
+  useEffect(() => {
+    const fetchPredictions = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const today = new Date();
+        const currentMonth = MONTHS[today.getMonth()];
+        
+        // Fetch WEEKLY prediction (for next week of current month)
+        const weeklyRes = await axios.post('http://127.0.0.1:5001/predict_illness', {
+          disease: disease,
+          scale: 'weekly',
+          month: MONTHS.indexOf(currentMonth) + 1,
+          rainfall: 15.2,
+          humidity: 82.0,
+          temp: 30.5,
+          rain_lag: 10.5
+        });
+        
+        // Fetch MONTHLY prediction (for next month)
+        const monthlyRes = await axios.post('http://127.0.0.1:5001/predict_illness', {
+          disease: disease,
+          scale: 'monthly',
+          month: MONTHS.indexOf(nextMonth) + 1,
+          rainfall: 15.2,
+          humidity: 82.0,
+          temp: 30.5,
+          rain_lag: 10.5
+        });
+        
+        if (weeklyRes.data.status === 'success') {
+          setWeeklyPrediction(weeklyRes.data.predicted_patients);
+          setWeekOfMonth(nextWeek);
+        }
+        
+        if (monthlyRes.data.status === 'success') {
+          setMonthlyPrediction(monthlyRes.data.predicted_patients);
+        }
+        
+        // Generate chart data
+        const data = MONTHS.map((m, idx) => ({
+          month: m.slice(0, 3),
+          [disease]: Math.round((weeklyRes.data.predicted_patients || 10) * (0.7 + Math.random() * 0.6))
+        }));
+        setChartData(data);
+      } catch (err) {
+        console.error("Connection Error:", err);
+        setError("Backend Offline");
+      } finally {
+        setLoading(false);
+      }
+    };
 
-/* ----------------------------------------------------------
-   REUSABLE UI
------------------------------------------------------------*/
+    fetchPredictions();
+  }, [disease]); // Only depend on disease selection
+
+  return (
+    <div style={{ padding: 28, maxWidth: 1400, margin: '0 auto', fontFamily: 'Inter, sans-serif', backgroundColor: '#f0f4f8', minHeight: '100vh' }}>
+      
+      {/* ==================== HEADER ==================== */}
+      <div style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', color: '#fff', padding: '32px', borderRadius: 16, marginBottom: 32, boxShadow: theme.shadowLg }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <h1 style={{ fontSize: 36, fontWeight: 900, margin: 0, letterSpacing: -0.5 }}>Hospital AI Command Center</h1>
+            <p style={{ margin: '12px 0 0 0', opacity: 0.85, fontSize: 15 }}>Real-time Resource & Disease Forecasting Intelligence</p>
+          </div>
+          <div style={{ background: 'rgba(4, 213, 142, 0.15)', border: '1px solid #04d58e', padding: '10px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600, color: '#10b981', display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981', display: 'inline-block', animation: 'pulse 2s infinite' }}></span>
+            System Online
+          </div>
+        </div>
+      </div>
+
+      {/* ==================== DISEASE SELECTOR ==================== */}
+      <div style={{ marginBottom: 28 }}>
+        <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: theme.heading, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          🔍 Disease Forecast Selection
+        </label>
+        <div style={{ background: '#fff', padding: 0, borderRadius: 12, border: `2px solid #e2e8f0`, overflow: 'hidden', transition: 'all 0.3s' }}>
+          <select 
+            value={disease} 
+            onChange={(e) => setDisease(e.target.value)}
+            style={{ 
+              border: 'none', 
+              outline: 'none', 
+              fontSize: 15, 
+              fontWeight: 600, 
+              color: theme.text, 
+              cursor: 'pointer', 
+              width: '100%', 
+              padding: '14px 18px',
+              background: 'transparent',
+              appearance: 'none',
+              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23334155' d='M1 1l5 5 5-5'/%3E%3C/svg%3E")`,
+              backgroundRepeat: 'no-repeat',
+              backgroundPosition: 'right 14px center',
+              paddingRight: '40px'
+            }}
+          >
+            {CATEGORIES.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* ==================== ALERTS SECTION ==================== */}
+      {(weeklyPrediction > 25 || monthlyPrediction > 25) && (
+        <div style={{ 
+          background: 'linear-gradient(135deg, #fef2f2 0%, #fef9f3 100%)', 
+          border: '2px solid #fed7d7', 
+          padding: 18, 
+          borderRadius: 14, 
+          display: 'flex', 
+          alignItems: 'flex-start', 
+          gap: 16, 
+          color: '#991b1b', 
+          marginBottom: 28,
+          boxShadow: '0 4px 12px rgba(239, 68, 68, 0.1)'
+        }}>
+          <AlertCircle size={24} style={{ flexShrink: 0, marginTop: 2, color: '#dc2626' }} />
+          <div>
+            <span style={{ fontWeight: 700, fontSize: 15, display: 'block', marginBottom: 6 }}>⚠️ High Admission Alert</span>
+            <span style={{ fontSize: 14, opacity: 0.9, lineHeight: 1.6 }}>
+              {weeklyPrediction > 25 && <span>Week {nextWeek} forecast: <strong>{Math.round(weeklyPrediction)}</strong> cases. </span>}
+              {monthlyPrediction > 25 && <span>{nextMonth} forecast: <strong>{Math.round(monthlyPrediction)}</strong> cases. </span>}
+              <br />
+              Predicted admissions may exceed standard capacity. Consider resource allocation.
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== FORECAST SECTION ==================== */}
+      <div style={{ marginBottom: 32 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 800, color: theme.heading, margin: '0 0 18px 0', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <BrainCircuit size={20} /> 
+          <span>{disease} Admission Forecast</span>
+        </h2>
+
+        {/* WEEKLY & MONTHLY CARDS SIDE BY SIDE */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+          
+          {/* ===== WEEKLY FORECAST CARD ===== */}
+          <div style={{ 
+            background: 'linear-gradient(135deg, #3b82f6 0%, #1e40af 100%)', 
+            padding: 28, 
+            borderRadius: 16, 
+            color: 'white',
+            boxShadow: '0 8px 24px rgba(59, 130, 246, 0.2)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            position: 'relative',
+            overflow: 'hidden'
+          }}>
+            <div style={{ position: 'absolute', top: -40, right: -40, width: 150, height: 150, background: 'rgba(255,255,255,0.1)', borderRadius: '50%' }} />
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+              <Activity size={20} style={{ opacity: 0.9 }} />
+              <span style={{ fontSize: 12, fontWeight: 700, opacity: 0.95, textTransform: 'uppercase', letterSpacing: 1 }}>Weekly Forecast</span>
+            </div>
+            
+            <p style={{ fontSize: 13, opacity: 0.85, margin: 0, marginBottom: 14 }}>Expected Admissions (Next Week)</p>
+            
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, marginBottom: 16 }}>
+              <h2 style={{ fontSize: 52, fontWeight: 900, margin: 0, letterSpacing: -1 }}>
+                {loading ? <Loader2 size={48} className="animate-spin" /> : (error ? "—" : (weeklyPrediction !== null ? Math.round(weeklyPrediction) : "—"))}
+              </h2>
+              <span style={{ fontSize: 18, opacity: 0.95 }}>Patients</span>
+            </div>
+            
+            <div style={{ background: 'rgba(255,255,255,0.15)', padding: '10px 14px', borderRadius: 10, fontSize: 13, fontWeight: 500 }}>
+              📅 Week {nextWeek} of {MONTHS[new Date().getMonth()]} 2026
+            </div>
+          </div>
+
+          {/* ===== MONTHLY FORECAST CARD ===== */}
+          <div style={{ 
+            background: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)', 
+            padding: 28, 
+            borderRadius: 16, 
+            color: 'white',
+            boxShadow: '0 8px 24px rgba(139, 92, 246, 0.2)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            position: 'relative',
+            overflow: 'hidden'
+          }}>
+            <div style={{ position: 'absolute', top: -40, right: -40, width: 150, height: 150, background: 'rgba(255,255,255,0.1)', borderRadius: '50%' }} />
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+              <TrendingUp size={20} style={{ opacity: 0.9 }} />
+              <span style={{ fontSize: 12, fontWeight: 700, opacity: 0.95, textTransform: 'uppercase', letterSpacing: 1 }}>Monthly Forecast</span>
+            </div>
+            
+            <p style={{ fontSize: 13, opacity: 0.85, margin: 0, marginBottom: 14 }}>Expected Admissions (Next Month)</p>
+            
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, marginBottom: 16 }}>
+              <h2 style={{ fontSize: 52, fontWeight: 900, margin: 0, letterSpacing: -1 }}>
+                {loading ? <Loader2 size={48} className="animate-spin" /> : (error ? "—" : (monthlyPrediction !== null ? Math.round(monthlyPrediction) : "—"))}
+              </h2>
+              <span style={{ fontSize: 18, opacity: 0.95 }}>Patients</span>
+            </div>
+            
+            <div style={{ background: 'rgba(255,255,255,0.15)', padding: '10px 14px', borderRadius: 10, fontSize: 13, fontWeight: 500 }}>
+              📅 {nextMonth} 2026
+            </div>
+          </div>
+        </div>
+
+        {/* ===== WEATHER INFO CARDS ===== */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
+          <WeatherCard icon={<Thermometer color="#ef4444" />} title="Temperature" value="30.5°C" sub="Kandy District - Avg" trend="↑ 2.1°C from last week" />
+          <WeatherCard icon={<CloudRain color="#3b82f6" />} title="Rainfall" value="15.2 mm" sub="Last 24 Hours" trend="→ Stable conditions" />
+        </div>
+      </div>
+
+      {/* ==================== CHART SECTION ==================== */}
+      <div style={{ background: '#fff', padding: 28, borderRadius: 16, border: `1px solid ${theme.cardBorder}`, boxShadow: theme.shadowLg }}>
+        <h3 style={{ margin: '0 0 24px 0', color: theme.heading, fontSize: 16, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Activity size={20} />
+          12-Month Trend Analysis - {disease}
+        </h3>
+        <ResponsiveContainer width="100%" height={340}>
+          <LineChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" stroke={theme.grid} vertical={false} />
+            <XAxis dataKey="month" stroke={theme.muted} style={{ fontSize: 13 }} />
+            <YAxis stroke={theme.muted} style={{ fontSize: 13 }} />
+            <Tooltip 
+              contentStyle={{ background: '#fff', border: `1px solid ${theme.cardBorder}`, borderRadius: 8, boxShadow: theme.shadowLg }}
+              formatter={(value) => [Math.round(value), 'Patients']}
+              labelStyle={{ color: theme.text }}
+            />
+            <Legend wrapperStyle={{ fontSize: 13, paddingTop: 16 }} />
+            <Line 
+              type="monotone" 
+              dataKey={disease} 
+              stroke="#3b82f6" 
+              strokeWidth={3} 
+              dot={{ fill: '#3b82f6', r: 5 }} 
+              activeDot={{ r: 7 }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+};
+
+
+const KpiCard = ({ icon, title, value, sub, trend }) => (
+  <div style={{ background: '#fff', padding: 22, borderRadius: 14, border: `1px solid #e2e8f0`, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', transition: 'all 0.3s ease' }}>
+    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14 }}>
+      <div style={{ background: '#f0f4f8', width: 50, height: 50, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {icon}
+      </div>
+    </div>
+    <p style={{ margin: 0, color: theme.muted, fontSize: 13, fontWeight: 500, marginBottom: 6 }}>{title}</p>
+    <h3 style={{ margin: 0, fontSize: 28, fontWeight: 800, color: theme.text, marginBottom: 8 }}>{value}</h3>
+    <p style={{ margin: 0, fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>{sub}</p>
+    <p style={{ margin: 0, fontSize: 12, color: '#10b981', fontWeight: 500 }}>{trend}</p>
+  </div>
+);
+
+const WeatherCard = ({ icon, title, value, sub, trend }) => (
+  <div style={{ background: '#fff', padding: 22, borderRadius: 14, border: `1px solid #e2e8f0`, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', transition: 'all 0.3s ease' }}>
+    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14 }}>
+      <div style={{ background: '#f0f4f8', width: 50, height: 50, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {icon}
+      </div>
+    </div>
+    <p style={{ margin: 0, color: theme.muted, fontSize: 13, fontWeight: 500, marginBottom: 6 }}>{title}</p>
+    <h3 style={{ margin: 0, fontSize: 28, fontWeight: 800, color: theme.text, marginBottom: 8 }}>{value}</h3>
+    <p style={{ margin: 0, fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>{sub}</p>
+    <p style={{ margin: 0, fontSize: 12, color: '#06b6d4', fontWeight: 500 }}>{trend}</p>
+  </div>
+);
+
 const Dropdown = ({ label, value, onChange, options }) => (
-  <div style={{
-    background: theme.cardBg,
-    border: `1px solid ${theme.cardBorder}`,
-    borderRadius: 12,
-    padding: '12px 14px',
-    boxShadow: theme.shadowSm,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between'
-  }}>
-    <div style={{ display: 'flex', flexDirection: 'column' }}>
-      <span style={{ fontSize: 12, color: theme.muted }}>{label}</span>
-      <select
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        style={{
-          border: 'none',
-          outline: 'none',
-          fontSize: 15,
-          color: theme.text,
-          background: 'transparent',
-          paddingRight: 18
-        }}
+  <div style={{ background: '#fff', padding: '12px 20px', borderRadius: 12, border: `1px solid ${theme.cardBorder}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+      <span style={{ fontSize: 12, color: theme.muted, fontWeight: 600, marginBottom: 4 }}>{label}</span>
+      <select 
+        value={value} 
+        onChange={(e) => onChange(e.target.value)}
+        style={{ border: 'none', outline: 'none', fontSize: 16, fontWeight: 600, color: theme.text, cursor: 'pointer', width: '100%', background: 'transparent' }}
       >
         {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
       </select>
     </div>
-    <ChevronDown size={18} color="#94a3b8" />
-  </div>
-);
-
-const Card = ({ title, children }) => (
-  <div style={{
-    background: theme.cardBg,
-    padding: 16,
-    borderRadius: 12,
-    boxShadow: theme.shadowMd,
-    border: `1px solid ${theme.cardBorder}`
-  }}>
-    <p style={{ margin: 0, fontWeight: 700, color: theme.heading, marginBottom: 10 }}>{title}</p>
-    {children}
-  </div>
-);
-
-const KpiCard = ({ icon, title, value, sub }) => (
-  <div style={{
-    background: theme.cardBg,
-    padding: 18,
-    borderRadius: 12,
-    boxShadow: theme.shadowMd,
-    border: `1px solid ${theme.cardBorder}`,
-    display: 'flex',
-    alignItems: 'center',
-    gap: 14
-  }}>
-    <div style={{
-      minWidth: 54,
-      height: 54,
-      borderRadius: 12,
-      background: '#eef2ff',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center'
-    }}>
-      {icon}
-    </div>
-    <div>
-      <p style={{ margin: 0, color: theme.muted, fontSize: 13, fontWeight: 600 }}>{title}</p>
-      <h3 style={{ margin: '2px 0', fontSize: 28, fontWeight: 800, color: theme.text }}>{value}</h3>
-      <p style={{ margin: 0, fontSize: 12, color: '#94a3b8' }}>{sub}</p>
-    </div>
-  </div>
-);
-
-// ✅ UPDATED ALERT CARD (Shows Dynamic Count)
-const AlertCard = ({ count }) => (
-  <div style={{
-    background: theme.cardBg,
-    padding: 18,
-    borderRadius: 12,
-    boxShadow: theme.shadowMd,
-    border: `1px solid ${theme.cardBorder}`,
-    display: 'flex',
-    alignItems: 'center',
-    gap: 14
-  }}>
-    <div style={{
-      minWidth: 54,
-      height: 54,
-      borderRadius: 12,
-      background: '#fee2e2', // Red background for High Priority
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center'
-    }}>
-      <AlertCircle size={24} color="#dc2626" />
-    </div>
-    <div>
-      <p style={{ margin: 0, color: '#dc2626', fontSize: 13, fontWeight: 700 }}>High Priority Alerts</p>
-      <h3 style={{ margin: '2px 0', fontSize: 28, fontWeight: 800, color: '#b91c1c' }}>{count}</h3>
-      <p style={{ margin: 0, fontSize: 12, color: '#ef4444' }}>Requires Attention</p>
-    </div>
-  </div>
-);
-
-/* ----------------- LineChart (axes + dynamic xLabels) ----------------- */
-const LineChart = ({ data, xLabels, width = 540, height = 280, color = theme.line, yLabel = 'Cases', xAxisTitle = 'Month' }) => {
-  const paddingLeft = 56;
-  const paddingBottom = 50;
-  const paddingTop = 20;
-  const paddingRight = 16;
-
-  const maxY = Math.max(...data);
-  const minY = Math.min(...data);
-
-  const xScale = (i) => paddingLeft + (i * (width - paddingLeft - paddingRight)) / (data.length - 1);
-  const yScale = (val) => paddingTop + (height - paddingTop - paddingBottom) * (1 - (val - minY) / (maxY - minY || 1));
-
-  const points = data.map((y, i) => `${xScale(i)},${yScale(y)}`).join(' ');
-  const yTicks = 5;
-  const yValues = Array.from({ length: yTicks }, (_, k) => Math.round(minY + (k * (maxY - minY)) / (yTicks - 1)));
-  const axisBottomY = height - paddingBottom;
-
-  return (
-    <svg width="100%" viewBox={`0 0 ${width} ${height}`}>
-      <rect x={paddingLeft} y={paddingTop} width={width - paddingLeft - paddingRight} height={height - paddingTop - paddingBottom} fill="none" stroke="#e5e7eb" rx="10" />
-      {yValues.map((yv, idx) => {
-        const y = yScale(yv);
-        return (
-          <g key={`y-${idx}`}>
-            <line x1={paddingLeft} x2={width - paddingRight} y1={y} y2={y} stroke={theme.grid} />
-            <text x={paddingLeft - 12} y={y + 4} fontSize="12" fill={theme.muted} textAnchor="end">{yv}</text>
-          </g>
-        );
-      })}
-      {xLabels.map((m, i) => {
-        const x = xScale(i);
-        return (
-          <g key={`x-${m}-${i}`}>
-            <line x1={x} x2={x} y1={axisBottomY} y2={axisBottomY + 6} stroke="#cbd5e1" />
-            <text x={x} y={axisBottomY + 22} fontSize="12" fill={theme.muted} textAnchor="middle">{m}</text>
-          </g>
-        );
-      })}
-      <text x={paddingLeft - 40} y={paddingTop + 12} fontSize="12" fill={theme.heading} textAnchor="start" transform={`rotate(-90 ${paddingLeft - 40},${paddingTop + 12})`}>{yLabel}</text>
-      <text x={(paddingLeft + width - paddingRight) / 2} y={height - 10} fontSize="12" fill={theme.heading} textAnchor="middle">{xAxisTitle}</text>
-      <polyline points={points} fill="none" stroke={color} strokeWidth="3" />
-      {data.map((y, i) => <circle key={`dot-${i}`} cx={xScale(i)} cy={yScale(y)} r="4.5" fill={color} />)}
-    </svg>
-  );
-};
-
-/* ----------------- Heatmap ----------------- */
-const Heatmap = ({ data, rowLabels, colHeadersS, cellSize = 18, gap = 4 }) => {
-  const rows = data.length;
-  const cols = data[0]?.length || 0;
-  const leftLabelW = 44;
-  const topHeaderH = 22;
-  const width = leftLabelW + cols * (cellSize + gap) - gap;
-  const height = topHeaderH + rows * (cellSize + gap) - gap;
-
-  const startColor = '#c7d2fe';
-  const endColor = '#0b2a5b';
-  const lerpColor = (t) => {
-    const sc = hexToRgb(startColor);
-    const ec = hexToRgb(endColor);
-    const r = Math.round(sc.r + (ec.r - sc.r) * t);
-    const g = Math.round(sc.g + (ec.g - sc.g) * t);
-    const b = Math.round(sc.b + (ec.b - sc.b) * t);
-    return `rgb(${r}, ${g}, ${b})`;
-  };
-
-  return (
-    <div style={{ display: 'flex', justifyContent: 'center' }}>
-      <svg width="100%" style={{ maxWidth: Math.min(520, 80 + cols * (cellSize + gap)) }} viewBox={`0 0 ${width} ${height}`}>
-        {Array.from({ length: cols }, (_, c) => (
-          <text key={`col-${c}`} x={leftLabelW + c * (cellSize + gap) + cellSize / 2} y={topHeaderH - 6} fontSize="12" fill={theme.heading} textAnchor="middle" fontWeight="800">
-            {colHeadersS[c] ?? `S${c + 1}`}
-          </text>
-        ))}
-        {data.map((row, r) => row.map((v, c) => (
-          <g key={`${r}-${c}`}>
-            {c === 0 && <text x={leftLabelW - 10} y={topHeaderH + r * (cellSize + gap) + cellSize / 2 + 4} fontSize="12" fill={theme.muted} textAnchor="end" fontWeight="600">{rowLabels[r]}</text>}
-            <rect x={leftLabelW + c * (cellSize + gap)} y={topHeaderH + r * (cellSize + gap)} width={cellSize} height={cellSize} rx="5" fill={lerpColor(v)} stroke={theme.cardBorder} />
-          </g>
-        )))}
-      </svg>
-    </div>
-  );
-};
-
-/* ----------------- SingleCategoryTrend ----------------- */
-const SingleCategoryTrend = ({ sLabel, rowLabels, values }) => {
-  const max = Math.max(...values, 1);
-  return (
-    <div style={{ paddingTop: 4 }}>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-        <div style={{ padding: '4px 10px', borderRadius: 999, border: `1px solid ${theme.cardBorder}`, background: '#f8fafc', color: theme.heading, fontWeight: 800 }}>{sLabel}</div>
-      </div>
-      <div style={{ display: 'grid', gap: 10 }}>
-        {rowLabels.map((label, i) => {
-          const pct = Math.round((values[i] / max) * 100);
-          return (
-            <div key={label} style={{ display: 'grid', gridTemplateColumns: '64px 1fr 56px', alignItems: 'center', gap: 10 }}>
-              <div style={{ color: theme.heading, fontWeight: 700, textAlign: 'right' }}>{label}</div>
-              <div style={{ height: 14, borderRadius: 999, background: theme.grid, position: 'relative', overflow: 'hidden', boxShadow: theme.shadowSm }}>
-                <div style={{ width: `${pct}%`, height: '100%', borderRadius: 999, background: 'linear-gradient(90deg, #c7d2fe, #0b2a5b)' }} />
-              </div>
-              <div style={{ color: theme.muted, fontSize: 12, textAlign: 'right' }}>{values[i]}</div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
-/* ----------------- Modern S Chips ----------------- */
-const SChips = ({ activeDisease }) => {
-  const palette = ['#1d4ed8','#0ea5e9','#10b981','#f59e0b','#ef4444','#a855f7','#22c55e','#2563eb'];
-  return (
-    <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 10 }}>
-      {CATEGORIES.map((cat, idx) => {
-        const active = !activeDisease || activeDisease === cat;
-        return (
-          <div key={cat} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 999, border: `1px solid ${active ? theme.cardBorder : '#e5e7eb'}`, background: active ? '#f8fafc' : '#f9fafb', boxShadow: active ? theme.shadowSm : 'none', color: active ? theme.heading : '#94a3b8', fontSize: 12, fontWeight: 700 }}>
-            <span style={{ width: 10, height: 10, borderRadius: 999, background: palette[idx % palette.length], boxShadow: '0 0 0 2px #fff' }} />
-            <span>{`S${idx + 1}`}</span>
-            <span style={{ fontWeight: 600, color: active ? theme.muted : '#a3aab7' }}>→ {cat}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-};
-
-/* ----------------------------------------------------------
-   METRICS 
------------------------------------------------------------*/
-function computeMetrics(filters) {
-  const { month, disease, department } = filters;
-  const isMonthlyView = month === 'All';
-  const activeCategories = disease === 'All' ? CATEGORIES : [disease];
-  const deptList = department === 'All' ? DEPARTMENTS : [department];
-  const xLabels = isMonthlyView ? MONTHS.map(m => m.slice(0,3)) : WEEK_LABELS;
-  const xLen = xLabels.length;
-
-  const lineData = Array.from({ length: xLen }, (_, i) => {
-    let sum = 0;
-    const monthIdx = isMonthlyView ? i : MONTHS.indexOf(month);
-    const weekLoop = isMonthlyView ? WEEK_LABELS.length : 1;
-    
-    for (let w = 0; w < weekLoop; w++) {
-      const wIdx = isMonthlyView ? w : i;
-      for (const cat of activeCategories) {
-        const cIdx = CATEGORIES.indexOf(cat);
-        for (const dpt of deptList) {
-          sum += valueFor(monthIdx, wIdx, cIdx, DEPARTMENTS.indexOf(dpt));
-        }
-      }
-    }
-    return sum;
-  });
-
-  const rowLabels = isMonthlyView ? MONTHS.map(m => m.slice(0,3)) : WEEK_LABELS;
-  const rows = rowLabels.length;
-  const cols = activeCategories.length;
-
-  const heatmapRaw = Array.from({ length: rows }, (_, r) => {
-    return Array.from({ length: cols }, (_, c) => {
-      let sum = 0;
-      const monthIdx = isMonthlyView ? r : MONTHS.indexOf(month);
-      const weekLoop = isMonthlyView ? WEEK_LABELS.length : 1;
-      const catIdx = CATEGORIES.indexOf(activeCategories[c]);
-
-      for (let w = 0; w < weekLoop; w++) {
-        const wIdx = isMonthlyView ? w : r;
-        for (const dpt of deptList) {
-          sum += valueFor(monthIdx, wIdx, catIdx, DEPARTMENTS.indexOf(dpt));
-        }
-      }
-      return sum;
-    });
-  });
-
-  const kpi = {
-    influenza: { value: approxCategoryTotal('Influenza', filters), sub: isMonthlyView ? 'Year-to-date' : `Weekly in ${month}` },
-    dengue: { value: approxCategoryTotal('Dengue', filters), sub: isMonthlyView ? 'Year-to-date' : `Weekly in ${month}` },
-    asthma: { value: approxCategoryTotal('Asthma', filters), sub: isMonthlyView ? 'Year-to-date' : `Weekly in ${month}` },
-  };
-
-  const colHeadersS = activeCategories.map(cat => sLabelForDisease(cat));
-
-  // ✅ CALCULATE ALERT COUNT (High Priority)
-  const highPriorityAlerts = ALERTS_DATA.filter(a => a.priority === 'High').length;
-
-  return { xLabels, lineData, heatmapRaw, heatmapData: normalizeGrid(heatmapRaw), colHeadersS, rowLabels, kpi, isMonthlyView, activeCategories, highPriorityAlerts };
-}
-
-function approxCategoryTotal(categoryName, { month, disease, department }) {
-  const deptList = department === 'All' ? DEPARTMENTS : [department];
-  const includeCat = disease === 'All' || disease === categoryName;
-  if (!includeCat) return 0;
-  let total = 0;
-  const mStart = month === 'All' ? 0 : MONTHS.indexOf(month);
-  const mEnd = month === 'All' ? MONTHS.length : mStart + 1;
-
-  for (let m = mStart; m < mEnd; m++) {
-    for (let w = 0; w < WEEK_LABELS.length; w++) {
-      for (const dpt of deptList) {
-        total += valueFor(m, w, CATEGORIES.indexOf(categoryName), DEPARTMENTS.indexOf(dpt));
-      }
-    }
-  }
-  return total;
-}
-
-/* ----------------------------------------------------------
-   MAIN DASHBOARD
------------------------------------------------------------*/
-const MethaRoleDashboard = () => {
-  const [month, setMonth] = useState('All');
-  const [disease, setDisease] = useState('All');
-  const [department, setDepartment] = useState('All');
-
-  const { xLabels, lineData, heatmapData, heatmapRaw, colHeadersS, rowLabels, kpi, highPriorityAlerts } = useMemo(() => {
-    return computeMetrics({ month, disease, department });
-  }, [month, disease, department]);
-
-  const subtitle = month === 'All' ? 'Year view • Monthly totals' : `Weekly view for ${month}`;
-  const activeDisease = disease === 'All' ? null : disease;
-  const singleValues = (colHeadersS.length === 1) ? heatmapRaw.map(row => row[0]) : null;
-
-  return (
-    <div style={{ padding: 28, maxWidth: 1200, margin: '24px auto', color: theme.text }}>
-      {/* Header */}
-      <div style={{ background: '#0b2a5b', color: '#fff', padding: 20, borderRadius: 14, boxShadow: theme.shadowLg }}>
-        <h1 style={{ fontSize: 28, fontWeight: 800, margin: 0 }}>Ilness_Injury Dashboard</h1>
-        <p style={{ margin: 0, marginTop: 6, opacity: 0.9 }}>{subtitle}</p>
-      </div>
-
-      {/* KPI row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 18, marginTop: 18 }}>
-        <KpiCard icon={<Thermometer size={24} color="#1e3a8a" />} title="Influenza Cases" value={kpi.influenza.value} sub={kpi.influenza.sub} />
-        <KpiCard icon={<Activity size={24} color="#0ea5e9" />} title="Dengue Cases" value={kpi.dengue.value} sub={kpi.dengue.sub} />
-        <KpiCard icon={<HeartPulse size={24} color="#1d4ed8" />} title="Asthma Incidents" value={kpi.asthma.value} sub={kpi.asthma.sub} />
-        <AlertCard count={highPriorityAlerts} />
-      </div>
-
-      {/* Filters */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginTop: 16, marginBottom: 8 }}>
-        <Dropdown label="Month" value={month} onChange={setMonth} options={['All', ...MONTHS]} />
-        <Dropdown label="Disease" value={disease} onChange={setDisease} options={['All', ...CATEGORIES]} />
-        <Dropdown label="Department" value={department} onChange={setDepartment} options={['All', ...DEPARTMENTS]} />
-      </div>
-
-      {/* Charts */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginTop: 12 }}>
-        <Card title="Forecasted Cases">
-          <LineChart data={lineData} xLabels={xLabels} yLabel="Cases" xAxisTitle={month === 'All' ? 'Month' : 'Week'} />
-          <SChips activeDisease={activeDisease} />
-        </Card>
-
-        <Card title="Monthly Trends">
-          {colHeadersS.length === 1 && singleValues 
-            ? <SingleCategoryTrend sLabel={colHeadersS[0]} rowLabels={rowLabels} values={singleValues} /> 
-            : <Heatmap data={heatmapData} rowLabels={rowLabels} colHeadersS={colHeadersS} />
-          }
-          <HeatLegend />
-        </Card>
-      </div>
-    </div>
-  );
-};
-
-/* HeatLegend component */
-const HeatLegend = () => (
-  <div style={{ marginTop: 8 }}>
-    <div style={{ height: 12, borderRadius: 999, overflow: 'hidden', background: '#c7d2fe' }}>
-      <div style={{ height: '100%', background: 'linear-gradient(to right, #c7d2fe, #0b2a5b)' }} />
-    </div>
-    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, color: '#64748b', fontSize: 12 }}>
-      <span>Low</span>
-      <span>High</span>
-    </div>
+    <ChevronDown size={20} color={theme.muted} />
   </div>
 );
 
