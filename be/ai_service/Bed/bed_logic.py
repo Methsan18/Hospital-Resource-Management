@@ -491,6 +491,8 @@ def predict():
 
     # --- ✅ ENSEMBLE AVERAGING ---
     predicted_arrivals = int(round((pred_tft + pred_lstm) / 2))
+    low_ci = int(round(low_ci))
+    high_ci = int(round(high_ci))
     print(f"🧠 AI Ensemble: TFT ({pred_tft:.1f}) + LSTM ({pred_lstm:.1f}) = Final Prediction: {predicted_arrivals}")
 
     # --- OPTIMIZATION LOGIC ---
@@ -579,7 +581,7 @@ def predict():
         f"{target_date_obj.strftime('%b %d')} (Pred)",
     ]
 
-    recent_values = df["ETU_Admissions"].tail(3).tolist()
+    recent_values = [int(round(x)) for x in df["ETU_Admissions"].tail(3).tolist()]
 
     occupancy_pct = int((etu_starting_occupancy / etu_capacity) * 100) if etu_capacity > 0 else 100
     risk = "Critical" if predicted_arrivals > 30 else ("High" if predicted_arrivals > 15 else "Normal")
