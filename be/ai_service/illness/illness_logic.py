@@ -1,0 +1,217 @@
+import os
+import pickle
+import pandas as pd
+from flask import Blueprint, request, jsonify
+from datetime import datetime
+import certifi
+from pymongo import MongoClient
+from pymongo.errors import ConnectionFailure
+
+# ==================== MONGODB CONNECTION ====================
+MONGO_URI = "mongodb+srv://famousfiveproject31:gg79ZAXI9vSELnAr@itpm.gsmz0.mongodb.net/test?appName=ITPM"
+
+print("⏳ Connecting to MongoDB...")
+try:
+    # Connect to MongoDB with SSL certificate verification
+    client = MongoClient(MONGO_URI, tlsCAFile=certifi.where())
+    
+    # Test the connection
+    client.admin.command('ping')
+    print("✅ MongoDB Connection Successful")
+    
+    # Get database reference
+    db = client["Research"]
+    
+    # Create collections if they don't exist
+    collections_to_create = {
+        "Illness_Predictions": [
+            ("disease", "text"),
+            ("predicted_patients", "number"),
+            ("scale", "text"),
+            ("month", "number"),
+            ("week_of_month", "number"),
+            ("timestamp", "date")
+        ],
+        "Illness_Inputs": [
+            ("date", "date"),
+            ("disease", "text"),
+            ("severity", "text"),
+            ("cases", "number"),
+            ("department", "text"),
+            ("ageGroup", "text"),
+            ("granularity", "text"),
+            ("timestamp", "date")
+        ],
+        "Bed_Management": [
+            ("bed_id", "text"),
+            ("status", "text"),
+            ("patient_count", "number"),
+            ("capacity", "number"),
+            ("last_updated", "date")
+        ],
+        "Hospital_Analytics": [
+            ("metric_name", "text"),
+            ("value", "number"),
+            ("date", "date"),
+            ("department", "text")
+        ]
+    }
+    
+    for collection_name in collections_to_create.keys():
+        if collection_name not in db.list_collection_names():
+            db.create_collection(collection_name)
+            print(f"   ✅ Collection '{collection_name}' created")
+        else:
+            print(f"   ✓ Collection '{collection_name}' already exists")
+    
+    print("="*50)
+    
+except ConnectionFailure as e:
+    print(f"❌ MongoDB Connection Failed: {e}")
+    db = None
+except Exception as e:
+    print(f"❌ Error setting up MongoDB: {e}")
+    db = None
+
+# --- 1. DEFINE THE BLUEPRINT FIRST ---
+# This fixes the NameError
+illness_bp = Blueprint('illness_bp', __name__)
+
+# --- 2. SET UP THE PATHS ---
+# This finds the 'models' folder inside your 'illness' directory
+MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models')
+
+@illness_bp.route('/predict_illness', methods=['POST'])
+def predict():
+    try:
+        content = request.json
+        if not content:
+            return jsonify({'status': 'error', 'message': 'No input data provided'}), 400
+
+        disease = content.get('disease', 'Dengue').replace(' ', '_')
+        scale = content.get('scale', 'weekly').lower() 
+
+        # --- 3. DYNAMIC FOLDER SWITCHING ---
+        if scale == 'monthly':
+            # Looking for: illness/models/monthly/Dengue_monthly_rf_model.pkl
+            model_filename = f"{disease}_monthly_rf_model.pkl"
+            model_path = os.path.join(MODEL_DIR, 'monthly', model_filename)
+        else:
+            # Looking for: illness/models/Dengue_rf_model.pkl
+            model_filename = f"{disease}_rf_model.pkl"
+            model_path = os.path.join(MODEL_DIR, model_filename)
+        
+        # Log to your server terminal so you can see it working
+        print(f"📂 LOADING MODEL: {model_path}")
+
+        if not os.path.exists(model_path):
+            return jsonify({
+                'status': 'error', 
+                'message': f'Model file not found at {model_path}'
+            }), 404
+
+        # --- 4. LOAD AND PREDICT ---
+
+        with open(model_path, 'rb') as f:
+            model = pickle.load(f)
+            
+        input_data = pd.DataFrame([{
+            'Rainfall_mm': float(content['rainfall']),
+            'Humidity_%': float(content['humidity']),
+            'Temp_Max': float(content['temp']),
+            'Rain_Lag_14_Days': float(content['rain_lag']),
+            'Month': int(content['month'])
+        }])
+
+        prediction = model.predict(input_data)
+
+        # Calculate week of month
+        today = datetime.now()
+        first_day = datetime(today.year, today.month, 1)
+        past_days = today.day - 1
+        week_of_month = (past_days + first_day.weekday()) // 7 + 1
+
+        prediction_value = int(round(float(prediction[0])))
+        
+        # Save prediction to MongoDB
+        if db is not None:
+            try:
+                prediction_doc = {
+                    'disease': content['disease'],
+                    'predicted_patients': prediction_value,
+                    'scale': scale,
+                    'month': int(content['month']),
+                    'week_of_month': week_of_month,
+                    'timestamp': datetime.now()
+                }
+                db['Illness_Predictions'].insert_one(prediction_doc)
+                print(f"✅ Saved to MongoDB: {content['disease']} - {prediction_value} cases")
+            except Exception as e:
+                print(f"⚠️ MongoDB insert error: {e}")
+
+        return jsonify({
+            'status': 'success',
+            'disease': content['disease'],
+            'scale': scale,
+            'predicted_patients': prediction_value,
+            'week_of_month': week_of_month,
+            'timeframe': f"Estimated admissions for Week {week_of_month} of {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][int(content.get('month', 1)) - 1]} 2026 (based on weather & historical patterns)",
+            'forecast_period': 'monthly'
+        })
+
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 400
+
+
+# ==================== ENDPOINT 2: SAVE ILLNESS INPUT DATA ====================
+@illness_bp.route('/save_illness_input', methods=['POST'])
+def save_illness_input():
+    """
+    Save manual illness input data to MongoDB Illness_Inputs collection
+    Used by TrainModel.jsx to feed new records into the system
+    """
+    try:
+        content = request.json
+        if not content:
+            return jsonify({'status': 'error', 'message': 'No input data provided'}), 400
+
+        # Validate required fields
+        required_fields = ['date', 'disease', 'cases']
+        for field in required_fields:
+            if field not in content or content[field] == '':
+                return jsonify({'status': 'error', 'message': f'Missing required field: {field}'}), 400
+
+        # Create document to save
+        illness_input_doc = {
+            'date': content.get('date'),
+            'disease': content.get('disease'),
+            'severity': content.get('severity', 'Medium'),
+            'cases': int(content.get('cases', 0)),
+            'department': content.get('department', 'OPD'),
+            'ageGroup': content.get('ageGroup', 'All Ages'),
+            'granularity': content.get('granularity', 'Weekly'),
+            'timestamp': datetime.now()
+        }
+
+        # Save to MongoDB if connected
+        if db is not None:
+            try:
+                result = db['Illness_Inputs'].insert_one(illness_input_doc)
+                record_id = str(result.inserted_id)
+                print(f"✅ Saved to Illness_Inputs: {content['disease']} - {content['cases']} cases (ID: {record_id})")
+                
+                return jsonify({
+                    'status': 'success',
+                    'message': 'Record saved to database',
+                    'record_id': record_id,
+                    'disease': content['disease'],
+                    'cases': int(content['cases'])
+                }), 201
+            except Exception as e:
+                print(f"❌ MongoDB insert error: {e}")
+                return jsonify({'status': 'error', 'message': f'Database save failed: {str(e)}'}), 500
+        else:
+            return jsonify({'status': 'error', 'message': 'MongoDB not connected'}), 500
+
+    except ValueError as e:
+        return jsonify({'status': 'error', 'message': f'Invalid data format: {str(e)}'}), 400
