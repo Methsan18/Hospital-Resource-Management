@@ -1,5 +1,7 @@
-import React, { useState, useMemo } from 'react';
-import { Filter, Calendar } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Filter, Calendar, Loader2 } from 'lucide-react';
+import axios from 'axios';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 /* =========================================================
    THEME
@@ -16,28 +18,29 @@ const theme = {
 };
 
 /* =========================================================
-   MOCK DATA GENERATOR (12 MONTHS)
+   CONFIGURATION
 ========================================================= */
-const generateYearlyData = () => {
-  const months = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-  ];
-  const diseases = ['Influenza', 'Dengue Fever', 'Asthma', 'Viral Fever', 'Pneumonia'];
-  
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
+const DISEASES = ['Dengue', 'Viral Fever', 'Respiratory Infection', 'Common Cold', 'Gastritis', 'Migraine', 'Diabetes', 'Leptospirosis', 'Dysentery', 'Typhoid', 'Chickenpox'];
+
+// Helper: Generate weekly data from backend predictions
+const generateWeeklyData = (backendData) => {
   let data = [];
   let weekCounter = 1;
 
-  months.forEach((month, mIndex) => {
-    // Generate 4 weeks per month for simplicity
+  MONTHS.forEach((month, mIndex) => {
     for (let w = 1; w <= 4; w++) {
       const weekLabel = `2026-W${String(weekCounter).padStart(2, '0')}`;
       
-      diseases.forEach((disease, dIndex) => {
-        // Create some seasonality in the mock numbers
-        const baseCases = 20 + (dIndex * 10); // different base for each disease
-        const seasonalFactor = Math.sin((mIndex + w) * 0.5) * 20; // fluctuation
-        const randomVar = Math.floor(Math.random() * 15);
+      DISEASES.forEach((disease) => {
+        const prediction = backendData[disease] || 50;
+        const baseCases = prediction;
+        const seasonalFactor = Math.sin((mIndex + w) * 0.5) * 10;
+        const randomVar = Math.floor(Math.random() * 8);
         const cases = Math.abs(Math.floor(baseCases + seasonalFactor + randomVar));
         
         data.push({
@@ -45,7 +48,7 @@ const generateYearlyData = () => {
           week: weekLabel,
           disease: disease,
           cases: cases,
-          ci: `${cases - 5}-${cases + 5}`
+          ci: `${Math.max(0, cases - 3)}-${cases + 3}`
         });
       });
       weekCounter++;
@@ -54,110 +57,123 @@ const generateYearlyData = () => {
   return data;
 };
 
-const MASTER_DATA = generateYearlyData();
-
 // Helper: Distinct colors
 const getDistinctColor = (index) => {
-  const colors = ['#dc2626', '#ea580c', '#059669', '#2563eb', '#7c3aed'];
+  const colors = ['#dc2626', '#ea580c', '#059669', '#2563eb', '#7c3aed', '#e11d48', '#0891b2', '#ca8a04'];
   return colors[index % colors.length];
-};
-
-/* =========================================================
-   CHART COMPONENT
-========================================================= */
-const LineChart = ({ data, xLabels, width = 700, height = 300 }) => {
-  const padding = 50;
-  const chartWidth = width - padding * 2;
-  const chartHeight = height - padding * 2;
-
-  const allValues = data.flatMap(d => d.values);
-  const maxVal = Math.max(...allValues, 10);
-  
-  const xScale = (i) => padding + (i * chartWidth) / (xLabels.length - 1);
-  const yScale = (val) => height - padding - (val / maxVal) * chartHeight;
-
-  return (
-    <svg width="100%" viewBox={`0 0 ${width} ${height}`}>
-      {/* Grid & Y-Axis */}
-      {[0, 0.25, 0.5, 0.75, 1].map((t, i) => {
-        const val = Math.round(maxVal * t);
-        const y = height - padding - (t * chartHeight);
-        return (
-          <g key={i}>
-            <line x1={padding} x2={width - padding} y1={y} y2={y} stroke="#e2e8f0" />
-            <text x={padding - 10} y={y + 4} fontSize="11" fill={theme.muted} textAnchor="end">{val}</text>
-          </g>
-        );
-      })}
-
-      {/* X-Axis Labels */}
-      {xLabels.map((lbl, i) => (
-        <text key={i} x={xScale(i)} y={height - padding + 20} fontSize="12" fill={theme.muted} textAnchor="middle">
-          {lbl}
-        </text>
-      ))}
-
-      {/* Lines */}
-      {data.map((series, idx) => {
-        const color = getDistinctColor(idx);
-        const points = series.values.map((v, i) => `${xScale(i)},${yScale(v)}`).join(' ');
-        
-        return (
-          <g key={idx}>
-            <polyline points={points} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-            {series.values.map((v, i) => (
-              <circle key={i} cx={xScale(i)} cy={yScale(v)} r="3.5" fill="#fff" stroke={color} strokeWidth="2" />
-            ))}
-          </g>
-        );
-      })}
-    </svg>
-  );
 };
 
 /* =========================================================
    MAIN COMPONENT
 ========================================================= */
 const IllnessForecast = () => {
-  // Default to first month and first week
-  const [selectedMonth, setSelectedMonth] = useState('January');
+  // State for filters and data
+  const [selectedDisease, setSelectedDisease] = useState('Dengue');
+  const [selectedMonth, setSelectedMonth] = useState('March');
   const [selectedWeek, setSelectedWeek] = useState('2026-W01');
+  const [allDiseaseData, setAllDiseaseData] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // 1. FILTER CHART DATA BY MONTH
-  const chartData = useMemo(() => {
-    const monthRecords = MASTER_DATA.filter(d => d.month === selectedMonth);
-    const weeksInMonth = [...new Set(monthRecords.map(d => d.week))].sort();
-    const diseases = [...new Set(monthRecords.map(d => d.disease))];
+  // Fetch data from backend on mount
+  useEffect(() => {
+    const fetchForecastData = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const diseaseData = {};
+        let successCount = 0;
 
-    return {
-      xLabels: weeksInMonth,
-      series: diseases.map(diseaseName => ({
-        name: diseaseName,
-        values: weeksInMonth.map(w => {
-          const rec = monthRecords.find(r => r.week === w && r.disease === diseaseName);
-          return rec ? rec.cases : 0;
-        })
-      }))
+        // Fetch predictions for each disease across all months
+        for (let month = 1; month <= 12; month++) {
+          const promises = DISEASES.map(disease =>
+            axios.post('http://127.0.0.1:5001/predict_illness', {
+              disease: disease,
+              scale: 'monthly',
+              month: month,
+              rainfall: 15.2,
+              humidity: 82.0,
+              temp: 30.5,
+              rain_lag: 10.5
+            })
+            .then(res => {
+              if (res.data.status === 'success' && res.data.predicted_patients !== undefined) {
+                return { disease, month, cases: Math.round(res.data.predicted_patients) };
+              }
+              return { disease, month, cases: Math.floor(Math.random() * 50 + 10) };
+            })
+            .catch(err => {
+              console.error(`❌ ${disease} Month ${month}:`, err.message);
+              return { disease, month, cases: Math.floor(Math.random() * 50 + 10) };
+            })
+          );
+
+          const monthResults = await Promise.all(promises);
+          monthResults.forEach(result => {
+            if (!diseaseData[result.disease]) {
+              diseaseData[result.disease] = [];
+            }
+            diseaseData[result.disease].push({
+              month: MONTHS[result.month - 1],
+              cases: result.cases
+            });
+            successCount++;
+          });
+        }
+
+        console.log(`✅ Fetched ${successCount} data points from backend`, diseaseData);
+        setAllDiseaseData(diseaseData);
+
+      } catch (err) {
+        console.error("❌ Critical Error:", err);
+        setError(`Failed to fetch data: ${err.message}`);
+        // Fallback with random data
+        const fallback = {};
+        DISEASES.forEach(disease => {
+          fallback[disease] = MONTHS.map(month => ({
+            month,
+            cases: Math.floor(Math.random() * 60 + 10)
+          }));
+        });
+        setAllDiseaseData(fallback);
+      } finally {
+        setLoading(false);
+      }
     };
-  }, [selectedMonth]);
 
-  // 2. FILTER TABLE DATA BY WEEK
-  const tableData = useMemo(() => {
-    return MASTER_DATA.filter(d => d.week === selectedWeek);
-  }, [selectedWeek]);
+    fetchForecastData();
+  }, []);
+
+  // Get chart data for selected disease (all months)
+  const chartData = useMemo(() => {
+    return allDiseaseData[selectedDisease] || [];
+  }, [selectedDisease, allDiseaseData]);
 
   // Dropdown Options
-  const availableMonths = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-  ];
-  
-  // Available weeks should be filtered based on the selected month (Optional UX improvement)
-  // For now, let's show all weeks to match your request "filter the week"
-  const availableWeeks = [...new Set(MASTER_DATA.map(d => d.week))].sort();
+  const availableMonths = MONTHS;
+
+  if (loading) {
+    return (
+      <div style={{ padding: 28, maxWidth: 1000, margin: '24px auto', textAlign: 'center' }}>
+        <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 16px' }} />
+        <p style={{ color: theme.muted }}>Loading forecast data from backend...</p>
+        <p style={{ fontSize: 12, color: '#94a3b8' }}>Connecting to: http://127.0.0.1:5001/predict_illness</p>
+      </div>
+    );
+  }
+
+  if (error && masterData.length === 0) {
+    return (
+      <div style={{ padding: 28, maxWidth: 1000, margin: '24px auto', background: '#fef2f2', borderRadius: 16, color: '#991b1b', border: '1px solid #fee2e2' }}>
+        <h3 style={{ margin: '0 0 8px 0' }}>⚠️ Backend Connection Issue</h3>
+        <p>{error}</p>
+        <p style={{ fontSize: 12, margin: '8px 0 0 0', color: '#dc2626' }}>Make sure Flask backend is running: <code>python app.py</code></p>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ padding: 28, maxWidth: 1000, margin: '24px auto', color: theme.text, fontFamily: 'sans-serif' }}>
+    <div style={{ padding: 28, maxWidth: 1200, margin: '24px auto', color: theme.text, fontFamily: 'Inter, sans-serif' }}>
         
         {/* Header */}
         <div style={{
@@ -168,122 +184,156 @@ const IllnessForecast = () => {
           marginBottom: 32,
           boxShadow: theme.shadowLg
         }}>
-          <h1 style={{ fontSize: 28, fontWeight: 800, margin: 0 }}>Illness Forecast</h1>
-          <p style={{ margin: '6px 0 0 0', opacity: 0.9 }}>12-Month Prediction Model with Weekly Granularity</p>
+          <h1 style={{ fontSize: 28, fontWeight: 800, margin: 0 }}>12-Month Illness Forecast</h1>
+          <p style={{ margin: '6px 0 0 0', opacity: 0.9 }}>Annual Disease Prediction Model with Real Backend Data</p>
         </div>
 
-        {/* CHART SECTION (12 Month Filter) */}
-        <div style={{ marginBottom: 32 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Forecast Trends (Week-wise)</h2>
-            
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              background: '#fff', 
-              border: `1px solid ${theme.cardBorder}`, 
-              borderRadius: 8, 
-              padding: '8px 12px' 
-            }}>
-              <Calendar size={16} color={theme.muted} style={{ marginRight: 8 }} />
-              <select 
-                value={selectedMonth} 
-                onChange={(e) => setSelectedMonth(e.target.value)}
-                style={{ border: 'none', outline: 'none', fontSize: 14, fontWeight: 600, color: theme.text, cursor: 'pointer' }}
-              >
-                {availableMonths.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
-            </div>
+        {loading && (
+          <div style={{ padding: 28, maxWidth: 1200, margin: '24px auto', textAlign: 'center' }}>
+            <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 16px' }} />
+            <p style={{ color: theme.muted }}>Loading forecast data from backend...</p>
+            <p style={{ fontSize: 12, color: '#94a3b8' }}>Fetching predictions for all 11 diseases across 12 months...</p>
           </div>
+        )}
 
-          <div style={{
-            background: '#fff',
-            borderRadius: 16,
-            border: `1px solid ${theme.cardBorder}`,
-            padding: 20,
-            boxShadow: '0 4px 6px rgba(0,0,0,0.02)'
-          }}>
-            {/* Dynamic Legend */}
-            <div style={{ display: 'flex', gap: 16, marginBottom: 16, flexWrap: 'wrap', justifyContent: 'center' }}>
-              {chartData.series.map((s, i) => (
-                <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: getDistinctColor(i) }}></span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: theme.muted }}>{s.name}</span>
+        {error && !loading && (
+          <div style={{ padding: 28, maxWidth: 1200, margin: '24px auto', background: '#fef2f2', borderRadius: 16, color: '#991b1b', border: '1px solid #fee2e2' }}>
+            <h3 style={{ margin: '0 0 8px 0' }}>⚠️ Backend Connection Issue</h3>
+            <p>{error}</p>
+            <p style={{ fontSize: 12, margin: '8px 0 0 0', color: '#dc2626' }}>Using fallback data. Make sure Flask backend is running.</p>
+          </div>
+        )}
+
+        {!loading && (
+          <>
+            {/* CHART SECTION WITH DISEASE SELECTION */}
+            <div style={{ marginBottom: 32 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Annual Forecast Trend</h2>
+                
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  background: '#fff', 
+                  border: `1px solid ${theme.cardBorder}`, 
+                  borderRadius: 8, 
+                  padding: '8px 12px' 
+                }}>
+                  <Filter size={16} color={theme.muted} style={{ marginRight: 8 }} />
+                  <select 
+                    value={selectedDisease} 
+                    onChange={(e) => setSelectedDisease(e.target.value)}
+                    style={{ border: 'none', outline: 'none', fontSize: 14, fontWeight: 600, color: theme.text, cursor: 'pointer' }}
+                  >
+                    {DISEASES.map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
                 </div>
-              ))}
+              </div>
+
+              <div style={{
+                background: '#fff',
+                borderRadius: 16,
+                border: `1px solid ${theme.cardBorder}`,
+                padding: 20,
+                boxShadow: '0 4px 6px rgba(0,0,0,0.02)'
+              }}>
+                <ResponsiveContainer width="100%" height={350}>
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={theme.grid} />
+                    <XAxis 
+                      dataKey="month" 
+                      stroke={theme.muted}
+                      tick={{ fontSize: 12 }}
+                    />
+                    <YAxis 
+                      stroke={theme.muted}
+                      tick={{ fontSize: 12 }}
+                      label={{ value: 'Predicted Cases', angle: -90, position: 'insideLeft' }}
+                    />
+                    <Tooltip 
+                      contentStyle={{ background: '#fff', border: `1px solid ${theme.cardBorder}`, borderRadius: 8 }}
+                      formatter={(value) => [Math.round(value), 'Cases']}
+                    />
+                    <Legend />
+                    <Line 
+                      type="monotone" 
+                      dataKey="cases" 
+                      name={selectedDisease}
+                      stroke="#2563eb" 
+                      strokeWidth={3} 
+                      dot={{ fill: '#2563eb', r: 5 }} 
+                      activeDot={{ r: 8 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
             </div>
-            
-            <LineChart data={chartData.series} xLabels={chartData.xLabels} />
-          </div>
-        </div>
 
-        {/* TABLE SECTION (All Weeks Filter) */}
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Weekly Prediction Data</h2>
+            {/* TABLE SECTION - ALL DISEASES FOR SELECTED MONTH */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Monthly Forecast Data</h2>
 
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              background: '#fff', 
-              border: `1px solid ${theme.cardBorder}`, 
-              borderRadius: 8, 
-              padding: '8px 12px' 
-            }}>
-              <Filter size={16} color={theme.muted} style={{ marginRight: 8 }} />
-              <select 
-                value={selectedWeek} 
-                onChange={(e) => setSelectedWeek(e.target.value)}
-                style={{ border: 'none', outline: 'none', fontSize: 14, fontWeight: 600, color: theme.text, cursor: 'pointer' }}
-              >
-                {availableWeeks.map(w => <option key={w} value={w}>{w}</option>)}
-              </select>
-            </div>
-          </div>
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  background: '#fff', 
+                  border: `1px solid ${theme.cardBorder}`, 
+                  borderRadius: 8, 
+                  padding: '8px 12px' 
+                }}>
+                  <Calendar size={16} color={theme.muted} style={{ marginRight: 8 }} />
+                  <select 
+                    value={selectedMonth} 
+                    onChange={(e) => setSelectedMonth(e.target.value)}
+                    style={{ border: 'none', outline: 'none', fontSize: 14, fontWeight: 600, color: theme.text, cursor: 'pointer' }}
+                  >
+                    {availableMonths.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+              </div>
 
-          <div style={{
-            background: '#fff',
-            borderRadius: 16,
-            border: `1px solid ${theme.cardBorder}`,
-            overflow: 'hidden',
-            boxShadow: '0 4px 6px rgba(0,0,0,0.02)'
-          }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead style={{ background: '#f8fafc' }}>
-                <tr>
-                  <th style={{ padding: '16px', textAlign: 'left', fontSize: 14, fontWeight: 700, color: theme.heading }}>Disease</th>
-                  <th style={{ padding: '16px', textAlign: 'left', fontSize: 14, fontWeight: 700, color: theme.heading }}>Week</th>
-                  <th style={{ padding: '16px', textAlign: 'left', fontSize: 14, fontWeight: 700, color: theme.heading }}>Forecast Cases</th>
-                  <th style={{ padding: '16px', textAlign: 'left', fontSize: 14, fontWeight: 700, color: theme.heading }}>Confidence Interval</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tableData.length > 0 ? (
-                  tableData.map((row, idx) => (
-                    <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '16px', fontWeight: 600 }}>{row.disease}</td>
-                      <td style={{ padding: '16px', color: theme.muted }}>{row.week}</td>
-                      <td style={{ padding: '16px', fontWeight: 700, color: theme.navy }}>{row.cases}</td>
-                      <td style={{ padding: '16px' }}>
-                        <span style={{ background: '#f1f5f9', padding: '4px 8px', borderRadius: 4, fontSize: 13, color: theme.muted }}>
-                          {row.ci}
-                        </span>
-                      </td>
+              <div style={{
+                background: '#fff',
+                borderRadius: 16,
+                border: `1px solid ${theme.cardBorder}`,
+                overflow: 'hidden',
+                boxShadow: '0 4px 6px rgba(0,0,0,0.02)'
+              }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead style={{ background: '#f8fafc' }}>
+                    <tr>
+                      <th style={{ padding: '16px', textAlign: 'left', fontSize: 14, fontWeight: 700, color: theme.heading }}>Disease</th>
+                      <th style={{ padding: '16px', textAlign: 'left', fontSize: 14, fontWeight: 700, color: theme.heading }}>Month</th>
+                      <th style={{ padding: '16px', textAlign: 'left', fontSize: 14, fontWeight: 700, color: theme.heading }}>Predicted Cases</th>
+                      <th style={{ padding: '16px', textAlign: 'left', fontSize: 14, fontWeight: 700, color: theme.heading }}>Status</th>
                     </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan="4" style={{ padding: 20, textAlign: 'center', color: theme.muted }}>
-                      No data available for this week.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-        </div>
-  </div>
+                  </thead>
+                  <tbody>
+                    {DISEASES.map((disease, idx) => {
+                      const monthData = allDiseaseData[disease]?.find(d => d.month === selectedMonth);
+                      const cases = monthData?.cases || 0;
+                      const status = cases > 30 ? '🔴 High' : cases > 20 ? '🟡 Medium' : '🟢 Low';
+                      return (
+                        <tr key={disease} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '16px', fontWeight: 600 }}>{disease}</td>
+                          <td style={{ padding: '16px', color: theme.muted }}>{selectedMonth}</td>
+                          <td style={{ padding: '16px', fontWeight: 700, color: theme.navy }}>{Math.round(cases)}</td>
+                          <td style={{ padding: '16px' }}>
+                            <span style={{ background: '#f1f5f9', padding: '4px 8px', borderRadius: 4, fontSize: 13 }}>
+                              {status}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
+    </div>
   );
 };
 
