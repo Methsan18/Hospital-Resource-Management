@@ -253,6 +253,11 @@ def get_weather():
         
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 400
+
+
+# ==================== ENDPOINT 4: SAVE ILLNESS INPUT ====================
+@illness_bp.route('/save_illness_input', methods=['POST'])
+def save_illness_input():
     """
     Save manual illness input data to MongoDB Illness_Inputs collection
     Used by TrainModel.jsx to feed new records into the system
@@ -268,15 +273,11 @@ def get_weather():
             if field not in content or content[field] == '':
                 return jsonify({'status': 'error', 'message': f'Missing required field: {field}'}), 400
 
-        # Create document to save
+        # Create document to save - only essential fields
         illness_input_doc = {
             'date': content.get('date'),
             'disease': content.get('disease'),
-            'severity': content.get('severity', 'Medium'),
             'cases': int(content.get('cases', 0)),
-            'department': content.get('department', 'OPD'),
-            'ageGroup': content.get('ageGroup', 'All Ages'),
-            'granularity': content.get('granularity', 'Weekly'),
             'timestamp': datetime.now()
         }
 
