@@ -23,17 +23,35 @@ const IllnessAlerts = () => {
       setLoading(true);
       setError(null);
       try {
+        // Step 1: Fetch weather data from backend
+        const weatherRes = await axios.get('http://127.0.0.1:5001/get_weather').catch(err => {
+          console.error("Weather API Error:", err);
+          return { 
+            data: { 
+              status: 'error',
+              current: { temperature: 30.5, humidity: 82.0, rainfall: 15.2, rain_lag: 10.5 }
+            } 
+          };
+        });
+
+        const weather = weatherRes.data.status === 'success' 
+          ? weatherRes.data.current 
+          : { temperature: 30.5, humidity: 82.0, rainfall: 15.2, rain_lag: 10.5 };
+
+        console.log('🌤️ Weather Data:', weather);
+
         const alerts = [];
 
+        // Step 2: Fetch predictions for all diseases using weather data
         const promises = DISEASES.map(disease =>
           axios.post('http://127.0.0.1:5001/predict_illness', {
             disease: disease,
             scale: 'monthly',
             month: nextMonthIndex + 1,
-            rainfall: 15.2,
-            humidity: 82.0,
-            temp: 30.5,
-            rain_lag: 10.5
+            rainfall: weather.rainfall || 15.2,
+            humidity: weather.humidity || 82.0,
+            temp: weather.temperature || 30.5,
+            rain_lag: weather.rain_lag || 10.5
           }, { timeout: 5000 })
           .then(res => {
             if (res.data.status === 'success' && res.data.predicted_patients !== undefined) {
