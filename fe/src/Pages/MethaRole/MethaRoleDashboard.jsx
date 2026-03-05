@@ -48,6 +48,13 @@ const MethaRoleDashboard = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [chartData, setChartData] = useState([]);
+  const [weatherData, setWeatherData] = useState({
+    temperature: 30.5,
+    humidity: 82,
+    rainfall: 15.2,
+    tempTrend: '↑ 2.1°C from last month',
+    location: 'Kandy District - Avg'
+  });
 
   // Helper: Calculate week of month
   const getWeekOfMonth = () => {
@@ -79,15 +86,43 @@ const MethaRoleDashboard = () => {
         const today = new Date();
         const currentMonth = MONTHS[today.getMonth()];
         
+        // Fetch weather data from backend
+        const weatherRes = await axios.get('http://127.0.0.1:5001/get_weather').catch(err => {
+          console.error("Weather API Error:", err);
+          return { data: { status: 'error' } };
+        });
+        
+        if (weatherRes.data.status === 'success') {
+          setWeatherData({
+            temperature: weatherRes.data.current.temperature,
+            humidity: weatherRes.data.current.humidity,
+            rainfall: weatherRes.data.current.rainfall,
+            tempTrend: weatherRes.data.current.temperature_trend,
+            location: weatherRes.data.location,
+            rainfallStatus: weatherRes.data.current.rainfall_status
+          });
+        }
+        
+        // Use weather data from backend for predictions
+        const weather = weatherRes.data.status === 'success' ? weatherRes.data.current : {
+          temperature: 30.5,
+          humidity: 82,
+          rainfall: 15.2,
+          rain_lag: 10.5
+        };
+        
         // Fetch WEEKLY prediction (for next week of current month)
         const weeklyRes = await axios.post('http://127.0.0.1:5001/predict_illness', {
           disease: disease,
           scale: 'weekly',
           month: MONTHS.indexOf(currentMonth) + 1,
-          rainfall: 15.2,
-          humidity: 82.0,
-          temp: 30.5,
-          rain_lag: 10.5
+          rainfall: weather.rainfall,
+          humidity: weather.humidity,
+          temp: weather.temperature,
+          rain_lag: weather.rain_lag || 10.5
+        }).catch(err => {
+          console.error("Weekly API Error:", err);
+          return { data: { status: 'error', predicted_patients: null } };
         });
         
         // Fetch MONTHLY prediction (for next month)
@@ -95,27 +130,57 @@ const MethaRoleDashboard = () => {
           disease: disease,
           scale: 'monthly',
           month: MONTHS.indexOf(nextMonth) + 1,
-          rainfall: 15.2,
-          humidity: 82.0,
-          temp: 30.5,
-          rain_lag: 10.5
+          rainfall: weather.rainfall,
+          humidity: weather.humidity,
+          temp: weather.temperature,
+          rain_lag: weather.rain_lag || 10.5
+        }).catch(err => {
+          console.error("Monthly API Error:", err);
+          return { data: { status: 'error', predicted_patients: null } };
         });
         
-        if (weeklyRes.data.status === 'success') {
+        // Set weekly prediction (with fallback)
+        if (weeklyRes.data && (weeklyRes.data.status === 'success' || weeklyRes.data.predicted_patients)) {
           setWeeklyPrediction(weeklyRes.data.predicted_patients);
           setWeekOfMonth(nextWeek);
+        } else {
+          setError("Failed to fetch weekly prediction");
         }
         
-        if (monthlyRes.data.status === 'success') {
+        // Set monthly prediction (with fallback)
+        if (monthlyRes.data && (monthlyRes.data.status === 'success' || monthlyRes.data.predicted_patients)) {
           setMonthlyPrediction(monthlyRes.data.predicted_patients);
+        } else {
+          setError("Failed to fetch monthly prediction");
         }
         
-        // Generate chart data
-        const data = MONTHS.map((m, idx) => ({
-          month: m.slice(0, 3),
-          [disease]: Math.round((weeklyRes.data.predicted_patients || 10) * (0.7 + Math.random() * 0.6))
-        }));
-        setChartData(data);
+        // Fetch 12-month predictions for trend analysis
+        const monthlyPredictions = [];
+        for (let i = 0; i < 12; i++) {
+          const monthNum = (i) % 12 + 1;
+          try {
+            const res = await axios.post('http://127.0.0.1:5001/predict_illness', {
+              disease: disease,
+              scale: 'monthly',
+              month: monthNum,
+              rainfall: weather.rainfall,
+              humidity: weather.humidity,
+              temp: weather.temperature,
+              rain_lag: weather.rain_lag || 10.5
+            });
+            monthlyPredictions.push({
+              month: MONTHS[i].slice(0, 3),
+              [disease]: Math.round(res.data.predicted_patients || 0)
+            });
+          } catch (err) {
+            console.error(`Error fetching month ${monthNum}:`, err);
+            monthlyPredictions.push({
+              month: MONTHS[i].slice(0, 3),
+              [disease]: 0
+            });
+          }
+        }
+        setChartData(monthlyPredictions);
       } catch (err) {
         console.error("Connection Error:", err);
         setError("Backend Offline");
@@ -279,8 +344,20 @@ const MethaRoleDashboard = () => {
 
         {/* ===== WEATHER INFO CARDS ===== */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
-          <WeatherCard icon={<Thermometer color="#ef4444" />} title="Temperature" value="30.5°C" sub="Kandy District - Avg" trend="↑ 2.1°C from last week" />
-          <WeatherCard icon={<CloudRain color="#3b82f6" />} title="Rainfall" value="15.2 mm" sub="Last 24 Hours" trend="→ Stable conditions" />
+          <WeatherCard 
+            icon={<Thermometer color="#ef4444" />} 
+            title="Temperature" 
+            value={`${weatherData.temperature}°C`} 
+            sub={`${weatherData.location}`} 
+            trend={weatherData.tempTrend} 
+          />
+          <WeatherCard 
+            icon={<CloudRain color="#3b82f6" />} 
+            title="Rainfall" 
+            value={`${weatherData.rainfall} mm`} 
+            sub="Monthly Average" 
+            trend={`${weatherData.rainfallStatus || 'Moderate'} rainfall conditions`}
+          />
         </div>
       </div>
 
