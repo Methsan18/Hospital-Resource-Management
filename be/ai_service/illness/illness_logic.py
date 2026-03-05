@@ -77,6 +77,21 @@ except Exception as e:
 # This fixes the NameError
 illness_bp = Blueprint('illness_bp', __name__)
 
+# Disease name mapping (Frontend name -> Model filename)
+DISEASE_MAPPING = {
+    'Dengue': 'Dengue',
+    'Viral Fever': 'Viral_Fever',
+    'Respiratory Infection': 'Respiratory_Infection',
+    'Common Cold': 'Common_Cold',
+    'Gastritis': 'Gastritis',
+    'Migraine': 'Migraine',
+    'Diabetes': 'Diabetes',
+    'Leptospirosis': 'Leptospirosis_(Rat_Fever)',
+    'Dysentery': 'Dysentery',
+    'Typhoid': 'Typhoid',
+    'Chickenpox': 'Chickenpox'
+}
+
 # --- 2. SET UP THE PATHS ---
 # This finds the 'models' folder inside your 'illness' directory
 MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models')
@@ -88,17 +103,20 @@ def predict():
         if not content:
             return jsonify({'status': 'error', 'message': 'No input data provided'}), 400
 
-        disease = content.get('disease', 'Dengue').replace(' ', '_')
+        disease_name = content.get('disease', 'Dengue')
+        # Map frontend disease name to model filename
+        disease_model_name = DISEASE_MAPPING.get(disease_name, disease_name.replace(' ', '_'))
+        
         scale = content.get('scale', 'weekly').lower() 
 
         # --- 3. DYNAMIC FOLDER SWITCHING ---
         if scale == 'monthly':
             # Looking for: illness/models/monthly/Dengue_monthly_rf_model.pkl
-            model_filename = f"{disease}_monthly_rf_model.pkl"
+            model_filename = f"{disease_model_name}_monthly_rf_model.pkl"
             model_path = os.path.join(MODEL_DIR, 'monthly', model_filename)
         else:
             # Looking for: illness/models/Dengue_rf_model.pkl
-            model_filename = f"{disease}_rf_model.pkl"
+            model_filename = f"{disease_model_name}_rf_model.pkl"
             model_path = os.path.join(MODEL_DIR, model_filename)
         
         # Log to your server terminal so you can see it working
@@ -163,9 +181,78 @@ def predict():
         return jsonify({'status': 'error', 'message': str(e)}), 400
 
 
-# ==================== ENDPOINT 2: SAVE ILLNESS INPUT DATA ====================
-@illness_bp.route('/save_illness_input', methods=['POST'])
-def save_illness_input():
+# ==================== ENDPOINT 3: GET WEATHER DATA ====================
+@illness_bp.route('/get_weather', methods=['GET'])
+def get_weather():
+    """
+    Return current and forecasted weather data for the hospital location (Kandy District, Sri Lanka)
+    This data is used for disease prediction models
+    """
+    try:
+        from datetime import datetime, timedelta
+        
+        today = datetime.now()
+        
+        # Sample weather data for Kandy District, Sri Lanka (monthly average)
+        # Based on historical climate patterns
+        monthly_weather = {
+            1: {'temp': 28.5, 'humidity': 75, 'rainfall': 45, 'rain_lag': 50},  # January
+            2: {'temp': 29.2, 'humidity': 73, 'rainfall': 35, 'rain_lag': 40},  # February
+            3: {'temp': 30.5, 'humidity': 82, 'rainfall': 65, 'rain_lag': 35},  # March
+            4: {'temp': 31.2, 'humidity': 85, 'rainfall': 150, 'rain_lag': 65}, # April
+            5: {'temp': 30.1, 'humidity': 84, 'rainfall': 155, 'rain_lag': 150}, # May
+            6: {'temp': 28.9, 'humidity': 81, 'rainfall': 112, 'rain_lag': 155}, # June
+            7: {'temp': 28.3, 'humidity': 80, 'rainfall': 120, 'rain_lag': 112}, # July
+            8: {'temp': 28.7, 'humidity': 81, 'rainfall': 130, 'rain_lag': 120}, # August
+            9: {'temp': 29.2, 'humidity': 83, 'rainfall': 145, 'rain_lag': 130}, # September
+            10: {'temp': 29.5, 'humidity': 85, 'rainfall': 135, 'rain_lag': 145}, # October
+            11: {'temp': 28.8, 'humidity': 82, 'rainfall': 95, 'rain_lag': 135},  # November
+            12: {'temp': 27.9, 'humidity': 76, 'rainfall': 55, 'rain_lag': 95}   # December
+        }
+        
+        current_month = today.month
+        current_weather = monthly_weather.get(current_month, {
+            'temp': 29.5,
+            'humidity': 80,
+            'rainfall': 100,
+            'rain_lag': 90
+        })
+        
+        # Calculate trend (simple: compare to last month)
+        prev_month = current_month - 1 if current_month > 1 else 12
+        prev_weather = monthly_weather.get(prev_month, current_weather)
+        
+        temp_change = current_weather['temp'] - prev_weather['temp']
+        temp_trend = "↑" if temp_change > 0 else "↓" if temp_change < 0 else "→"
+        
+        return jsonify({
+            'status': 'success',
+            'location': 'Kandy District, Sri Lanka',
+            'date': today.strftime('%Y-%m-%d'),
+            'current': {
+                'temperature': current_weather['temp'],
+                'temperature_unit': '°C',
+                'humidity': current_weather['humidity'],
+                'humidity_unit': '%',
+                'rainfall': current_weather['rainfall'],
+                'rainfall_unit': 'mm',
+                'rain_lag': current_weather['rain_lag'],
+                'rain_lag_unit': 'mm',
+                'temperature_trend': f"{temp_trend} {abs(temp_change):.1f}°C from last month",
+                'rainfall_status': "Heavy" if current_weather['rainfall'] > 120 else "Moderate" if current_weather['rainfall'] > 60 else "Light"
+            },
+            'forecast': {
+                'next_month': {
+                    'month_num': (current_month % 12) + 1,
+                    'temperature': monthly_weather.get((current_month % 12) + 1, current_weather)['temp'],
+                    'humidity': monthly_weather.get((current_month % 12) + 1, current_weather)['humidity'],
+                    'rainfall': monthly_weather.get((current_month % 12) + 1, current_weather)['rainfall']
+                }
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 400
     """
     Save manual illness input data to MongoDB Illness_Inputs collection
     Used by TrainModel.jsx to feed new records into the system
