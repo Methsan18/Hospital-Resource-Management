@@ -124,8 +124,18 @@ const IllnessTrendsCard = () => {
   const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const DISEASES = ['Dengue', 'Viral Fever', 'Respiratory Infection', 'Common Cold', 'Gastritis', 'Migraine', 'Diabetes', 'Leptospirosis', 'Dysentery', 'Typhoid', 'Chickenpox'];
 
-  // X-Axis Labels (Last 8 Months)
-  const months = ['May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  // X-Axis Labels (Last 8 Months - Dynamic)
+  const getLastEightMonths = () => {
+    const today = new Date();
+    const currentMonth = today.getMonth();
+    const months = [];
+    for (let i = 7; i >= 0; i--) {
+      const monthIdx = (currentMonth - i + 12) % 12;
+      months.push(MONTHS[monthIdx].slice(0, 3));
+    }
+    return months;
+  };
+  const months = getLastEightMonths();
 
   // Fetch data from backend
   useEffect(() => {
@@ -133,36 +143,76 @@ const IllnessTrendsCard = () => {
       setLoading(true);
       setError(null);
       try {
-        const promises = DISEASES.map(disease =>
-          axios.post('http://127.0.0.1:5001/predict_illness', {
-            disease: disease,
-            scale: 'monthly',
-            month: 12,
-            rainfall: 15.2,
-            humidity: 82.0,
-            temp: 30.5,
-            rain_lag: 10.5
-          }).catch(() => ({ data: { status: 'error' } }))
-        );
+        // Get last 8 months
+        const today = new Date();
+        const currentMonth = today.getMonth();
+        const lastEightMonthNums = [];
+        for (let i = 7; i >= 0; i--) {
+          const monthIdx = (currentMonth - i + 12) % 12;
+          lastEightMonthNums.push(monthIdx + 1);
+        }
 
-        const responses = await Promise.all(promises);
-        const data = responses.map((res, idx) => ({
-          disease: DISEASES[idx],
-          value: res.data.status === 'success' ? res.data.predicted_patients : Math.floor(Math.random() * 150 + 40),
-          mom: Math.floor(Math.random() * 20 + 1) + '%',
-          yoy: Math.floor(Math.random() * 15 + 1) + '%'
-        }));
-        
-        setTrendsData(data);
+        // Fetch predictions for all diseases and all 8 months
+        const diseasePromises = DISEASES.map(async (disease) => {
+          const monthDataPromises = lastEightMonthNums.map(monthNum =>
+            axios.post('http://127.0.0.1:5001/predict_illness', {
+              disease: disease,
+              scale: 'monthly',
+              month: monthNum,
+              rainfall: 15.2,
+              humidity: 82.0,
+              temp: 30.5,
+              rain_lag: 10.5
+            }).catch(() => ({ data: { status: 'error', predicted_patients: 0 } }))
+          );
+
+          const monthResponses = await Promise.all(monthDataPromises);
+          const chartData = monthResponses.map(res => 
+            res.data.status === 'success' ? res.data.predicted_patients : Math.floor(Math.random() * 150 + 40)
+          );
+
+          // Calculate MoM (Month-on-Month): current month vs previous month
+          const currentMonthValue = chartData[chartData.length - 1];
+          const previousMonthValue = chartData[chartData.length - 2] || currentMonthValue;
+          const momChange = previousMonthValue !== 0 
+            ? Math.round(((currentMonthValue - previousMonthValue) / previousMonthValue) * 100)
+            : 0;
+
+          // Calculate YoY (Year-on-Year): current month vs same month last year
+          // For 8-month window, compare to first value if available (8 months ago)
+          const eightMonthsAgoValue = chartData[0] || currentMonthValue;
+          const yoyChange = eightMonthsAgoValue !== 0
+            ? Math.round(((currentMonthValue - eightMonthsAgoValue) / eightMonthsAgoValue) * 100)
+            : 0;
+
+          // Format changes (only add + for positive values)
+          const formatChange = (value) => {
+            if (value > 0) return '+' + value + '%';
+            if (value < 0) return value + '%';
+            return '0%';
+          };
+
+          return {
+            disease: disease,
+            chartData: chartData,
+            value: currentMonthValue,
+            mom: formatChange(momChange),
+            yoy: formatChange(yoyChange)
+          };
+        });
+
+        const responses = await Promise.all(diseasePromises);
+        setTrendsData(responses);
       } catch (err) {
         console.error("Error fetching trends:", err);
         setError("Failed to fetch data");
         // Fallback to static data
         setTrendsData(DISEASES.map(d => ({
           disease: d,
+          chartData: Array(8).fill(0).map(() => Math.floor(Math.random() * 150 + 40)),
           value: Math.floor(Math.random() * 150 + 40),
-          mom: Math.floor(Math.random() * 20 + 1) + '%',
-          yoy: Math.floor(Math.random() * 15 + 1) + '%'
+          mom: '+' + Math.floor(Math.random() * 20 + 1) + '%',
+          yoy: '+' + Math.floor(Math.random() * 15 + 1) + '%'
         })));
       } finally {
         setLoading(false);
@@ -179,18 +229,23 @@ const IllnessTrendsCard = () => {
     return topDiseases.map((item, idx) => ({
       name: item.disease,
       color: colors[idx],
-      data: Array(8).fill(0).map(() => Math.floor(item.value * (0.8 + Math.random() * 0.4)))
+      data: item.chartData
     }));
   }, [trendsData]);
 
   // 2. TABLE DATA (All diseases sorted by growth)
   const tableData = useMemo(() => {
+    const today = new Date();
+    const currentMonthName = MONTHS[today.getMonth()];
+    const currentYear = today.getFullYear();
+    const currentMonthStr = `${currentMonthName} ${currentYear}`;
+    
     return trendsData.map((item, idx) => ({
       d: item.disease,
-      m: 'Dec 2025',
+      m: currentMonthStr,
       c: item.value,
-      mom: '+' + item.mom,
-      yoy: '+' + item.yoy
+      mom: item.mom,
+      yoy: item.yoy
     }));
   }, [trendsData]);
 
