@@ -5,22 +5,16 @@ import { CheckCircle, Database, FileText, AlertCircle, Loader2 } from 'lucide-re
 const TrainModel = () => {
   // Enhanced State to match your Dataset + Research Requirements
   const [formData, setFormData] = useState({
-    date: '',              // Matches 'Date' in CSV
-    disease: '',           // Matches 'Disease_or_Injury' in CSV
-    severity: 'Medium',    // Matches 'Severity' in CSV
-    cases: '',             // Matches 'Case_Count' in CSV
-    department: 'OPD',     // Matches 'Department' in CSV
-    ageGroup: 'All Ages',  // Research Value (Enrichment)
-    granularity: 'Weekly'  // Aggregation logic
+    date: '',
+    disease: '',
+    cases: ''
   });
 
   const [isTraining, setIsTraining] = useState(false);
   const [trainResult, setTrainResult] = useState(null);
   const [error, setError] = useState(null);
 
-  // Derived from your CSV values
-  const departments = ['OPD', 'Medical Ward', 'Emergency', 'ICU', 'Pediatrics'];
-  const severityLevels = ['Low', 'Medium', 'High'];
+
   
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -49,11 +43,7 @@ const TrainModel = () => {
       const response = await axios.post('http://127.0.0.1:5001/save_illness_input', {
         date: formData.date,
         disease: formData.disease,
-        severity: formData.severity,
         cases: parseInt(formData.cases),
-        department: formData.department,
-        ageGroup: formData.ageGroup,
-        granularity: formData.granularity,
         timestamp: new Date().toISOString()
       });
 
@@ -62,7 +52,7 @@ const TrainModel = () => {
           success: true,
           accuracy: (89 + Math.random() * 5).toFixed(2),
           timestamp: new Date().toLocaleString(),
-          features_used: ['Date', 'Disease', 'Severity', 'Cases', 'Department'],
+          features_used: ['Date', 'Disease', 'Cases'],
           status: 'Record successfully saved to database',
           recordId: response.data.record_id
         });
@@ -71,11 +61,7 @@ const TrainModel = () => {
         setFormData({
           date: '',
           disease: '',
-          severity: 'Medium',
-          cases: '',
-          department: 'OPD',
-          ageGroup: 'All Ages',
-          granularity: 'Weekly'
+          cases: ''
         });
       } else {
         setError(response.data.message || 'Failed to save data');
@@ -100,9 +86,9 @@ const TrainModel = () => {
           marginBottom: 32,
           boxShadow: '0 10px 30px rgba(11, 42, 91, 0.15)'
         }}>
-          <h1 style={{ fontSize: 28, fontWeight: 800, margin: 0 }}>Model Retraining & Data Input</h1>
+          <h1 style={{ fontSize: 28, fontWeight: 800, margin: 0 }}>Patient Admission Data Entry</h1>
           <p style={{ margin: '8px 0 0 0', opacity: 0.85, fontSize: 15 }}>
-            Feed new records matching your 10k Hospital Dataset schema
+            Record new patient admissions and illness cases in the hospital
           </p>
         </div>
 
@@ -127,29 +113,16 @@ const TrainModel = () => {
             <form onSubmit={handleTrainModel}>
               <div style={{ display: 'grid', gap: 20 }}>
 
-                {/* Row 1: Date & Severity */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                  <div>
-                    <label style={labelStyle}>Date <span style={{color:'#ef4444'}}>*</span></label>
-                    <input
-                      type="date"
-                      name="date"
-                      value={formData.date}
-                      onChange={handleInputChange}
-                      style={inputStyle}
-                    />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Severity <span style={{color:'#ef4444'}}>*</span></label>
-                    <select
-                      name="severity"
-                      value={formData.severity}
-                      onChange={handleInputChange}
-                      style={inputStyle}
-                    >
-                      {severityLevels.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </div>
+                {/* Row 1: Date Only */}
+                <div>
+                  <label style={labelStyle}>Date <span style={{color:'#ef4444'}}>*</span></label>
+                  <input
+                    type="date"
+                    name="date"
+                    value={formData.date}
+                    onChange={handleInputChange}
+                    style={inputStyle}
+                  />
                 </div>
 
                 {/* Row 2: Disease Only (Removed ICD-10) */}
@@ -165,62 +138,22 @@ const TrainModel = () => {
                   />
                 </div>
 
-                {/* Row 3: Cases & Department */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                  <div>
-                    <label style={labelStyle}>Case Count <span style={{color:'#ef4444'}}>*</span></label>
-                    <input
-                      type="number"
-                      name="cases"
-                      value={formData.cases}
-                      onChange={handleInputChange}
-                      placeholder="e.g. 26"
-                      min="0"
-                      style={inputStyle}
-                    />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Department <span style={{color:'#ef4444'}}>*</span></label>
-                    <select
-                      name="department"
-                      value={formData.department}
-                      onChange={handleInputChange}
-                      style={inputStyle}
-                    >
-                      {departments.map(d => <option key={d} value={d}>{d}</option>)}
-                    </select>
-                  </div>
+                {/* Row 3: Cases Only */}
+                <div>
+                  <label style={labelStyle}>Number of Patients <span style={{color:'#ef4444'}}>*</span></label>
+                  <input
+                    type="number"
+                    name="cases"
+                    value={formData.cases}
+                    onChange={handleInputChange}
+                    placeholder="e.g. 5"
+                    min="0"
+                    max="999"
+                    style={inputStyle}
+                  />
                 </div>
 
-                 {/* Row 4: Age Group & Granularity */}
-                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                  <div>
-                    <label style={labelStyle}>Age Group</label>
-                    <select
-                      name="ageGroup"
-                      value={formData.ageGroup}
-                      onChange={handleInputChange}
-                      style={inputStyle}
-                    >
-                      <option>All Ages</option>
-                      <option>Pediatric (&lt;5)</option>
-                      <option>Adult (18-60)</option>
-                      <option>Senior (60+)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Context</label>
-                    <select
-                      name="granularity"
-                      value={formData.granularity}
-                      onChange={handleInputChange}
-                      style={{...inputStyle, color: '#64748b'}}
-                      disabled
-                    >
-                      <option>Weekly (Auto-calculated)</option>
-                    </select>
-                  </div>
-                </div>
+
 
                 {/* Submit Button */}
                 <div style={{ marginTop: 12 }}>
@@ -313,9 +246,9 @@ const TrainModel = () => {
                   <span style={{ fontSize: 15, fontWeight: 700, color: '#9a3412' }}>Dataset Compatibility</span>
                 </div>
                 <ul style={{ fontSize: 13, color: '#475569', margin: 0, paddingLeft: 16, lineHeight: 1.6 }}>
-                  <li><strong>Rainfall & Temp:</strong> Automatically fetched based on the <em>Date</em> to match your training set features.</li>
-                  <li><strong>Severity:</strong> Added to improve triage prediction accuracy.</li>
-                  <li><strong>Week Number:</strong> Auto-derived from Date (e.g., Week 48).</li>
+                  <li><strong>Date:</strong> Admission or report date for the patient(s).</li>
+                  <li><strong>Disease:</strong> Diagnosis or condition name (e.g., Dengue, Pneumonia).</li>
+                  <li><strong>Cases:</strong> Number of patients with the disease.</li>
                 </ul>
             </div>
 
